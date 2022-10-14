@@ -20,7 +20,10 @@
     
     <!-- ======= WORLD ======= -->
     <worldbody>
-        <light directional='false' diffuse='.7 .7 .7' specular='0.03 0.03 0.03' pos='-1 -1.0 4.0' dir='1 1.0 -4'/>
+        <!--<light directional='false' diffuse='.7 .7 .7' specular='0.03 0.03 0.03' pos='-1 -1.0 4.0' dir='1 1.0 -4'/>-->
+        <light directional='false' diffuse='1 1 1' specular='0.3 0.3 0.3' pos='-1 -1.0 4.0' dir='1 1.0 -4'/>
+        <!-- TODO: increase scene brightness -->
+        <!--<light name="light" pos="0 0 10.5" mode="trackcom"/>-->
         <geom name='ground' size="1.5 1.5 0.25" pos="0 0 -1" type="plane" contype="1" conaffinity="0" material="groundplane" />
         <camera name="fixed" pos="0 -0.7 0.7" quat="0.92388 0.382683 0 0" />
         <!-- Camera for the VIL paper -->
@@ -55,6 +58,9 @@
             <!-- ======= Adroit ======= -->
             <include file="DAPG_Adroit.xml"/>
         </body>
+
+        <!-- Wall to occlude wrist joint in the background -->
+        <geom name="uprightwall" type="box" conaffinity="1" pos="-0.107 5 0.447" size="5 .1 5" material="MatPlane" euler="0 0 0"/>
 
         <!-- ======= DOOR ======= -->
         <body name="frame" pos="-0.107339 0.0435293 0.447376" user="1001 0 2002 -0.4 -0.1 0.252 0 0.3 0.45">

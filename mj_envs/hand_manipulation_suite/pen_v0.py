@@ -47,6 +47,9 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.action_space.high = np.ones_like(self.model.actuator_ctrlrange[:,1])
         self.action_space.low  = -1.0 * np.ones_like(self.model.actuator_ctrlrange[:,0])
 
+        # setup rendering
+        self.mj_viewer_headless_setup()
+
     def step(self, a):
         a = np.clip(a, -1.0, 1.0)
         try:
@@ -93,8 +96,9 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         desired_pos = self.data.site_xpos[self.eps_ball_sid].ravel()
         obj_orien = (self.data.site_xpos[self.obj_t_sid] - self.data.site_xpos[self.obj_b_sid])/self.pen_length
         desired_orien = (self.data.site_xpos[self.tar_t_sid] - self.data.site_xpos[self.tar_b_sid])/self.tar_length
+        # Ensure type is compatible with that of the default observation spec
         return np.concatenate([qp[:-6], obj_pos, obj_vel, obj_orien, desired_orien,
-                               obj_pos-desired_pos, obj_orien-desired_orien])
+                               obj_pos-desired_pos, obj_orien-desired_orien]).astype('float32')
 
     def reset_model(self):
         qp = self.init_qpos.copy()
@@ -133,6 +137,15 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.sim.forward()
         self.viewer.cam.distance = 1.0
 
+    def mj_viewer_headless_setup(self):
+        # configure simulation cam
+        self.sim.render(64, 64)
+        self.sim._render_context_offscreen.cam.azimuth = -45
+        self.sim.forward()
+        lookatv = self.sim.data.cam_xpos[-1] - self.sim.data.body_xpos[self.target_obj_bid]
+        self.sim._render_context_offscreen.cam.distance = 4.5 #4 * lookatv.dot(lookatv.T)
+        self.sim._render_context_offscreen.cam.elevation = -np.rad2deg(np.arccos(lookatv[0] / lookatv[2])) / 4
+
     def evaluate_success(self, paths):
         num_success = 0
         num_paths = len(paths)
@@ -142,3 +155,9 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
                 num_success += 1
         success_percentage = num_success*100.0/num_paths
         return success_percentage
+
+    def render(self, *args, **kwargs):
+        # /opt/anaconda3/envs/planet-mjenv/lib/python3.9/site-packages/mujoco_py/mjviewer.py
+        image = self.sim.render(640, 480)
+        image = image[::-1, :, :] # Rendered images are upside-down.
+        return np.random.randint((640, 480, 3)) if image is None else image

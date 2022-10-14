@@ -2,9 +2,13 @@ import numpy as np
 from gym import utils
 from mjrl.envs import mujoco_env
 from mujoco_py import MjViewer
+#from contacts import _contact_data
 import os
 
 ADD_BONUS_REWARDS = True
+#DEFAULT_FRAME_SKIP = 5
+DEFAULT_FRAME_SKIP = 1
+DEFAULT_DT = 0.1
 
 class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
     def __init__(self):
@@ -12,9 +16,13 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.door_bid = 0
         self.grasp_sid = 0
         self.handle_sid = 0
+        self.contact_type = 'none'
         curr_dir = os.path.dirname(os.path.abspath(__file__))
-        mujoco_env.MujocoEnv.__init__(self, curr_dir+'/assets/DAPG_door.xml', 5)
-        
+        mujoco_env.MujocoEnv.__init__(self, curr_dir+'/assets/DAPG_door.xml', frame_skip=DEFAULT_FRAME_SKIP)
+
+        # override rendering settings ---- but can't atm...
+        self.metadata['video.frames_per_second'] = int(np.round(1.0 / DEFAULT_DT))
+
         # change actuator sensitivity
         self.sim.model.actuator_gainprm[self.sim.model.actuator_name2id('A_WRJ1'):self.sim.model.actuator_name2id('A_WRJ0')+1,:3] = np.array([10, 0, 0])
         self.sim.model.actuator_gainprm[self.sim.model.actuator_name2id('A_FFJ3'):self.sim.model.actuator_name2id('A_THJ0')+1,:3] = np.array([1, 0, 0])
@@ -31,6 +39,9 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.grasp_sid = self.model.site_name2id('S_grasp')
         self.handle_sid = self.model.site_name2id('S_handle')
         self.door_bid = self.model.body_name2id('frame')
+
+        # setup rendering
+        self.mj_viewer_headless_setup()
 
     def step(self, a):
         a = np.clip(a, -1.0, 1.0)
@@ -77,7 +88,17 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         else:
             door_open = -1.0
         latch_pos = qp[-1]
-        return np.concatenate([qp[1:-2], [latch_pos], door_pos, palm_pos, handle_pos, palm_pos-handle_pos, [door_open]])
+        # Ensure type is compatible with that of the default observation spec
+        # TODO: need MjModel->ptr of type mujoco._structs.MjModel...
+        #x = _contact_data(self.sim.data, self.sim.model, self.contact_type).squeeze(0)
+        x = np.zeros(3)
+        return np.concatenate([qp[1:-2], [latch_pos], door_pos, palm_pos, handle_pos, palm_pos-handle_pos, [door_open],
+                               x]).astype('float32')
+        #return dict(
+        #    state=np.concatenate([qp[1:-2], [latch_pos], door_pos, palm_pos, handle_pos, palm_pos-handle_pos, [door_open]]).astype('float32'),
+        #    contacts=_contact_data(self.sim.data, self.sim.model, self.contact_type)
+        #)
+
 
     def reset_model(self):
         qp = self.init_qpos.copy()
@@ -115,6 +136,15 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.sim.forward()
         self.viewer.cam.distance = 1.5
 
+    def mj_viewer_headless_setup(self):
+        # configure simulation cam
+        self.sim.render(64, 64)
+        self.sim._render_context_offscreen.cam.azimuth = 90
+        self.sim.forward()
+        lookatv = self.sim.data.cam_xpos[-1] - self.sim.data.body_xpos[self.door_bid]
+        self.sim._render_context_offscreen.cam.distance = 2 * lookatv.dot(lookatv.T)
+        self.sim._render_context_offscreen.cam.elevation = -np.rad2deg(np.arccos(lookatv[0] / lookatv[2])) / 2 + 25
+
     def evaluate_success(self, paths):
         num_success = 0
         num_paths = len(paths)
@@ -124,3 +154,13 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
                 num_success += 1
         success_percentage = num_success*100.0/num_paths
         return success_percentage
+
+    def render(self, *args, **kwargs):
+        # /opt/anaconda3/envs/planet-mjenv/lib/python3.9/site-packages/mujoco_py/mjviewer.py
+        image = self.sim.render(640, 480)
+        image = image[::-1, :, :] # Rendered images are upside-down.
+        return np.random.randint((640, 480, 3)) if image is None else image
+
+    def contact_type(self, contact_type: str):
+        self.contact_type = contact_type
+

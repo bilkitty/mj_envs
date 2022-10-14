@@ -65,7 +65,8 @@ class RelocateEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         obj_pos  = self.data.body_xpos[self.obj_bid].ravel()
         palm_pos = self.data.site_xpos[self.S_grasp_sid].ravel()
         target_pos = self.data.site_xpos[self.target_obj_sid].ravel()
-        return np.concatenate([qp[:-6], palm_pos-obj_pos, palm_pos-target_pos, obj_pos-target_pos])
+        # Ensure type is compatible with that of the default observation spec
+        return np.concatenate([qp[:-6], palm_pos-obj_pos, palm_pos-target_pos, obj_pos-target_pos]).astype('float32')
        
     def reset_model(self):
         qp = self.init_qpos.copy()

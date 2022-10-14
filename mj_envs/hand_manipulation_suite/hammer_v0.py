@@ -83,7 +83,8 @@ class HammerEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         palm_pos = self.data.site_xpos[self.S_grasp_sid].ravel()
         target_pos = self.data.site_xpos[self.target_obj_sid].ravel()
         nail_impact = np.clip(self.sim.data.sensordata[self.sim.model.sensor_name2id('S_nail')], -1.0, 1.0)
-        return np.concatenate([qp[:-6], qv[-6:], palm_pos, obj_pos, obj_rot, target_pos, np.array([nail_impact])])
+        # Ensure type is compatible with that of the default observation spec
+        return np.concatenate([qp[:-6], qv[-6:], palm_pos, obj_pos, obj_rot, target_pos, np.array([nail_impact])]).astype('float32')
 
     def reset_model(self):
         self.sim.reset()
