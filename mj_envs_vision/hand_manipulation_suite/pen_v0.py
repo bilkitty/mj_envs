@@ -2,6 +2,7 @@ import numpy as np
 from gym import utils
 from mjrl.envs import mujoco_env
 from mj_envs_vision.utils.quatmath import quat2euler, euler2quat
+from mj_envs_vision.hand_manipulation_suite.headless_observer import HeadlessObserver
 from mujoco_py import MjViewer
 import os
 
@@ -19,6 +20,7 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.tar_b_sid = 0
         self.pen_length = 1.0
         self.tar_length = 1.0
+        self.use_aerial_view = False
 
         curr_dir = os.path.dirname(os.path.abspath(__file__))
         mujoco_env.MujocoEnv.__init__(self, curr_dir+'/assets/DAPG_pen.xml', 5)
@@ -47,8 +49,8 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.action_space.high = np.ones_like(self.model.actuator_ctrlrange[:,1])
         self.action_space.low  = -1.0 * np.ones_like(self.model.actuator_ctrlrange[:,0])
 
-        # setup rendering
-        self.mj_viewer_headless_setup()
+        self.observer = HeadlessObserver(self.sim, self.target_obj_bid)
+        #self.observer.set_view('aerial')
 
     def step(self, a):
         a = np.clip(a, -1.0, 1.0)
@@ -140,15 +142,19 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
     def mj_viewer_headless_setup(self):
         # configure simulation cam
         self.sim.render(64, 64)
-        self.sim._render_context_offscreen.cam.azimuth = -45
         self.sim.forward()
-        #lookatv = self.sim.data.cam_xpos[-1] - self.sim.data.body_xpos[self.target_obj_bid]
-        #self.sim._render_context_offscreen.cam.distance = 4.5 #4 * lookatv.dot(lookatv.T)
-        #self.sim._render_context_offscreen.cam.elevation = -np.rad2deg(np.arccos(lookatv[0] / lookatv[2])) / 4
 
-        lookatv = self.sim.data.cam_xpos[-1] - self.sim.data.body_xpos[self.target_obj_bid]
-        self.sim._render_context_offscreen.cam.distance = 4 * lookatv.dot(lookatv.T)
-        self.sim._render_context_offscreen.cam.elevation = -np.rad2deg(np.arccos(lookatv[0] / lookatv[2])) / 2 #+ 25
+        # NOTE: rendered image  starts clipping at d < 4.5
+        #       aerial view: elevation = -45 - deg
+        #       fronto-parallel: azimuth = 90, elevation -45 + deg
+        lookatv = self.sim.data.body_xpos[self.target_obj_bid] - self.sim.data.cam_xpos[-1]
+        self.sim._render_context_offscreen.cam.azimuth = 90
+        self.sim._render_context_offscreen.cam.distance = 4.5
+        if self.use_aerial_view:
+            self.sim._render_context_offscreen.cam.elevation = -45 - np.rad2deg(np.arccos(lookatv[0] / lookatv[2])) / 2
+        else:
+            self.sim._render_context_offscreen.cam.elevation = -45 + np.rad2deg(np.arccos(lookatv[0] / lookatv[2])) / 2
+
 
     def evaluate_success(self, paths):
         num_success = 0
@@ -161,7 +167,4 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         return success_percentage
 
     def render(self, *args, **kwargs):
-        # /opt/anaconda3/envs/planet-mjenv/lib/python3.9/site-packages/mujoco_py/mjviewer.py
-        image = self.sim.render(640, 480)
-        image = image[::-1, :, :] # Rendered images are upside-down.
-        return np.random.randint((640, 480, 3)) if image is None else image
+        return self.observer.render(args, kwargs)

@@ -2,7 +2,7 @@ import numpy as np
 from gym import utils
 from mjrl.envs import mujoco_env
 from mujoco_py import MjViewer
-#from contacts import _contact_data
+from mj_envs_vision.hand_manipulation_suite.headless_observer import HeadlessObserver
 import os
 
 ADD_BONUS_REWARDS = True
@@ -16,7 +16,7 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.door_bid = 0
         self.grasp_sid = 0
         self.handle_sid = 0
-        self.contact_type = 'none'
+
         curr_dir = os.path.dirname(os.path.abspath(__file__))
         mujoco_env.MujocoEnv.__init__(self, curr_dir+'/assets/DAPG_door.xml', frame_skip=DEFAULT_FRAME_SKIP)
 
@@ -40,8 +40,8 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.handle_sid = self.model.site_name2id('S_handle')
         self.door_bid = self.model.body_name2id('frame')
 
-        # setup rendering
-        self.mj_viewer_headless_setup()
+        self.observer = HeadlessObserver(self.sim, self.door_bid)
+        #self.observer.set_view('aerial')
 
     def step(self, a):
         a = np.clip(a, -1.0, 1.0)
@@ -131,19 +131,12 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.sim.forward()
 
     def mj_viewer_setup(self):
+        # TODO: viewer currently unusable
+        #       for local display
         self.viewer = MjViewer(self.sim)
         self.viewer.cam.azimuth = 90
         self.sim.forward()
         self.viewer.cam.distance = 1.5
-
-    def mj_viewer_headless_setup(self):
-        # configure simulation cam
-        self.sim.render(64, 64)
-        self.sim._render_context_offscreen.cam.azimuth = 90
-        self.sim.forward()
-        lookatv = self.sim.data.cam_xpos[-1] - self.sim.data.body_xpos[self.door_bid]
-        self.sim._render_context_offscreen.cam.distance = 2 * lookatv.dot(lookatv.T)
-        self.sim._render_context_offscreen.cam.elevation = -np.rad2deg(np.arccos(lookatv[0] / lookatv[2])) / 2 #+ 25
 
     def evaluate_success(self, paths):
         num_success = 0
@@ -156,11 +149,5 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         return success_percentage
 
     def render(self, *args, **kwargs):
-        # /opt/anaconda3/envs/planet-mjenv/lib/python3.9/site-packages/mujoco_py/mjviewer.py
-        image = self.sim.render(640, 480)
-        image = image[::-1, :, :] # Rendered images are upside-down.
-        return np.random.randint((640, 480, 3)) if image is None else image
-
-    def contact_type(self, contact_type: str):
-        self.contact_type = contact_type
+        return self.observer.render(args, kwargs)
 

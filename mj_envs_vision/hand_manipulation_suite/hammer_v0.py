@@ -3,6 +3,7 @@ from gym import utils
 from mjrl.envs import mujoco_env
 from mujoco_py import MjViewer
 from mj_envs_vision.utils.quatmath import *
+from mj_envs_vision.hand_manipulation_suite.headless_observer import HeadlessObserver
 import os
 
 ADD_BONUS_REWARDS = True
@@ -33,6 +34,9 @@ class HammerEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.act_rng = 0.5 * (self.model.actuator_ctrlrange[:, 1] - self.model.actuator_ctrlrange[:, 0])
         self.action_space.high = np.ones_like(self.model.actuator_ctrlrange[:,1])
         self.action_space.low  = -1.0 * np.ones_like(self.model.actuator_ctrlrange[:,0])
+
+        self.observer = HeadlessObserver(self.sim, self.obj_bid)
+        #self.observer.set_view('aerial')
 
     def step(self, a):
         a = np.clip(a, -1.0, 1.0)
@@ -129,3 +133,6 @@ class HammerEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
                 num_success += 1
         success_percentage = num_success*100.0/num_paths
         return success_percentage
+
+    def render(self, *args, **kwargs):
+        return self.observer.render(args, kwargs)
