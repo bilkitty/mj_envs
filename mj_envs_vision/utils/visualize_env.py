@@ -3,6 +3,7 @@ import cv2
 import click
 import pickle
 import torch
+import torchvision
 from mjrl.utils.gym_env import GymEnv
 from torchvision.utils import save_image
 from mjrl.policies.gaussian_mlp import MLP
@@ -23,8 +24,12 @@ USAGE:\n
 @click.option('--seed', type=int, help='seed for generating environment instances', default=123)
 @click.option('--episodes', type=int, help='number of episodes to visualize', default=10)
 @click.option('--save_mode', type=int, default=1, help='flag to save renderings')
+@click.option('--enable_resize', is_flag=True, show_default=True, default=False, help='flag: resize image')
 
-def main(env_name, policy, mode, seed, episodes, save_mode):
+
+def main(env_name, policy, mode, seed, episodes, save_mode, enable_resize):
+    resize = torchvision.transforms.Resize((64, 64))
+    center_crop = torchvision.transforms.CenterCrop((128, 128))
     try:
         e = GymEnv(env_name)
     except:
@@ -39,12 +44,13 @@ def main(env_name, policy, mode, seed, episodes, save_mode):
 
     if save_mode == 1:
         e.env.reset()
-        image = cv2.resize(e.env.render(mode='rgb_array'), (64, 64), interpolation=cv2.INTER_LINEAR) # crop/resize image
-        image = torch.tensor(image.transpose(2, 0, 1), dtype=torch.float32)  # put channel first
+        image = e.env.render(mode='rgb_array').transpose(2, 0, 1).copy()  # put channel first
+        image = center_crop(torch.tensor(image, dtype=torch.float32))     # crop
+        if enable_resize:
+            image = resize(image)
         # TODO: fix these transforms
-        image = 2 * image - 1 # zero center
-        image = image.unsqueeze(dim=0)  # +batch dimension
-        save_image(image, os.path.join('/home/bilkit/Workspace/mj_envs_vision/results', f'test_render.png'))
+        image = image.unsqueeze(dim=0) / 255  # normalise + batch dimension
+        save_image(image, os.path.join('/home/bilkit/Workspace/mj_envs_vision/results', f'test_render-{env_name}.png'))
         print(f"done")
     else:
         # render policy
