@@ -30,7 +30,7 @@
         <camera name="view_3" pos="0 0.2 -0.2" euler="-2.35 0 3.14" />
         <camera name="view_4" pos="0.8 -0.8 0.8" euler="0.785 0.785 0.785" />
         <camera name="view_5" pos="0 -0.25 -0.4" euler="-3.2 0 3.14" />
- 
+
         <!-- ======= TABLE ======= -->
         <body name="table">
             <!-- <geom size="0.5 0.5 0.025" type="plane" material="table2d" /> --> <!-- Plane has better contacts -->
@@ -55,6 +55,9 @@
             <!-- ======= Adroit ======= -->
             <include file="DAPG_Adroit.xml"/>
         </body>
+
+        <!-- Wall to occlude wrist joint in the background -->
+        <geom name="uprightwall" type="box" conaffinity="1" pos="-0.107 5 0.447" size="5 .1 5" material="MatPlane" euler="0 0 0"/>
 
         <!-- ======= PEN ======= -->
         <site name="eps_ball" type="sphere" pos="0.0 -0.2 0.25" size="0.075" rgba="0 0 0 0" />

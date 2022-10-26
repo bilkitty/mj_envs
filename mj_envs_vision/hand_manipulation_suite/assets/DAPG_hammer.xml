@@ -71,6 +71,9 @@
             <include file="DAPG_Adroit.xml"/>
         </body>
 
+        <!-- Wall to occlude wrist joint in the background -->
+        <geom name="uprightwall" type="box" conaffinity="1" pos="-0.107 5 0.447" size="5 .1 5" material="MatPlane" euler="0 0 0"/>
+
         <!-- ======= Nail ======= -->
         <body name="nail_board" pos="0.05 0 0.185245" quat="0.583833 0.583368 -0.399421 -0.399104" user="1001 0 2002 0.05 0 0.1 0.05 0 0.25">
             <inertial pos="0 0 0" mass="0.512" diaginertia="0.00110933 0.00110933 0.00218453" />
