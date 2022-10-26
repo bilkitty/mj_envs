@@ -1,7 +1,7 @@
 import numpy as np
 from gym import utils
 from mjrl.envs import mujoco_env
-from mj_envs.utils.quatmath import quat2euler, euler2quat
+from mj_envs_vision.utils.quatmath import quat2euler, euler2quat
 from mujoco_py import MjViewer
 import os
 
@@ -142,9 +142,13 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.sim.render(64, 64)
         self.sim._render_context_offscreen.cam.azimuth = -45
         self.sim.forward()
+        #lookatv = self.sim.data.cam_xpos[-1] - self.sim.data.body_xpos[self.target_obj_bid]
+        #self.sim._render_context_offscreen.cam.distance = 4.5 #4 * lookatv.dot(lookatv.T)
+        #self.sim._render_context_offscreen.cam.elevation = -np.rad2deg(np.arccos(lookatv[0] / lookatv[2])) / 4
+
         lookatv = self.sim.data.cam_xpos[-1] - self.sim.data.body_xpos[self.target_obj_bid]
-        self.sim._render_context_offscreen.cam.distance = 4.5 #4 * lookatv.dot(lookatv.T)
-        self.sim._render_context_offscreen.cam.elevation = -np.rad2deg(np.arccos(lookatv[0] / lookatv[2])) / 4
+        self.sim._render_context_offscreen.cam.distance = 4 * lookatv.dot(lookatv.T)
+        self.sim._render_context_offscreen.cam.elevation = -np.rad2deg(np.arccos(lookatv[0] / lookatv[2])) / 2 #+ 25
 
     def evaluate_success(self, paths):
         num_success = 0

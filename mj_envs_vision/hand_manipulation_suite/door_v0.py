@@ -143,7 +143,7 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.sim.forward()
         lookatv = self.sim.data.cam_xpos[-1] - self.sim.data.body_xpos[self.door_bid]
         self.sim._render_context_offscreen.cam.distance = 2 * lookatv.dot(lookatv.T)
-        self.sim._render_context_offscreen.cam.elevation = -np.rad2deg(np.arccos(lookatv[0] / lookatv[2])) / 2 + 25
+        self.sim._render_context_offscreen.cam.elevation = -np.rad2deg(np.arccos(lookatv[0] / lookatv[2])) / 2 #+ 25
 
     def evaluate_success(self, paths):
         num_success = 0

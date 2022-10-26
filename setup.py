@@ -10,7 +10,7 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 setup(
-    name='mj_envs',
+    name='mj_envs_vision',
     version='1.0.0',
     packages=find_packages(),
     description='environments simulated in MuJoCo',
