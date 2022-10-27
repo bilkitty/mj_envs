@@ -1,11 +1,10 @@
 import os
-import cv2
 import click
 import pickle
-import torch
-import torchvision
+import numpy as np
+from PIL import Image
+from gym.wrappers.order_enforcing import OrderEnforcing
 from mjrl.utils.gym_env import GymEnv
-from torchvision.utils import save_image
 from mjrl.policies.gaussian_mlp import MLP
 
 DESC = '''
@@ -15,7 +14,6 @@ USAGE:\n
     $ python visualize_policy.py --env_name door-v0 \n
     $ python visualize_policy.py --env_name door-v0 --policy my_policy.pickle --mode evaluation --episodes 10 \n
 '''
-
 # MAIN =========================================================
 @click.command(help=DESC)
 @click.option('--env_name', type=str, help='environment to load', required= True)
@@ -24,17 +22,17 @@ USAGE:\n
 @click.option('--seed', type=int, help='seed for generating environment instances', default=123)
 @click.option('--episodes', type=int, help='number of episodes to visualize', default=10)
 @click.option('--save_mode', type=int, default=1, help='flag to save renderings')
-@click.option('--enable_resize', is_flag=True, show_default=True, default=False, help='flag: resize image')
 
 
-def main(env_name, policy, mode, seed, episodes, save_mode, enable_resize):
-    resize = torchvision.transforms.Resize((64, 64))
-    center_crop = torchvision.transforms.CenterCrop((128, 128))
+def main(env_name, policy, mode, seed, episodes, save_mode):
     try:
+        # TODO: make sure all envs can be instantiated here without hardcoding namespace
         e = GymEnv(env_name)
     except:
         print("retry create env")
         e = GymEnv(f'mj_envs_vision:{env_name}')
+        if not isinstance(e, OrderEnforcing): # while?
+            e.env = e.env.env # unwrap timelimit
 
     e.set_seed(seed)
     if policy is not None:
@@ -43,18 +41,32 @@ def main(env_name, policy, mode, seed, episodes, save_mode, enable_resize):
         pi = MLP(e.spec, hidden_sizes=(32,32), seed=seed, init_log_std=-1.0)
 
     if save_mode == 1:
-        e.env.reset()
-        image = e.env.render(mode='rgb_array').transpose(2, 0, 1).copy()  # put channel first
-        image = center_crop(torch.tensor(image, dtype=torch.float32))     # crop
-        if enable_resize:
-            image = resize(image)
-        # TODO: fix these transforms
-        image = image.unsqueeze(dim=0) / 255  # normalise + batch dimension
-        save_image(image, os.path.join('/home/bilkit/Workspace/mj_envs_vision/results', f'test_render-{env_name}.png'))
+        record_policy(e, num_episodes=episodes, mode='rgb_array', env_name=env_name, policy_name="random")
         print(f"done")
     else:
         # render policy
         e.visualize_policy(pi, num_episodes=episodes, horizon=e.horizon, mode=mode)
+
+
+ENABLE_RESIZE = False
+RESULTS_DIR = '/home/bilkit/Workspace/mj_envs_vision/results'
+def record_policy(gym_env, num_episodes, mode, env_name="unk", policy_name="unk", policy=None):
+    # roll out policy for k episodes
+    trajectory = []
+    for k in range(num_episodes):
+        t = 0
+        term = False
+        obs = gym_env.env.reset()
+        trajectory.append([gym_env.env.render(mode, ENABLE_RESIZE).numpy() * 255])
+        while t < gym_env.horizon and term is False:
+            obs, reward, term, _ = gym_env.step(policy.get_action(obs)[0] if policy else gym_env.env.action_space.sample())
+            trajectory[-1].append(gym_env.env.render(mode, ENABLE_RESIZE).numpy() * 255)
+            t += 1
+
+        pils = [Image.fromarray(frame.transpose(1, 2, 0).astype('uint8')) for frame in trajectory[-1]]
+        pils[0].save(os.path.join(RESULTS_DIR, f'{env_name}_{policy_name}_{k}.gif'),
+                     append_images=pils, save_all=True, optimize=False, loop=True, duration=len(pils) * 5)
+
 
 if __name__ == '__main__':
     main()
