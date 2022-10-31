@@ -15,9 +15,8 @@ setup(
     packages=find_packages(),
     description='environments simulated in MuJoCo',
     long_description=read('README.md'),
-    url='https://github.com/vikashplus/mj_envs.git',
-    author='Movement Control Lab, UW',
+    url='https://github.com/bilkitty/mj_envs.git',
     install_requires=[
-        'click', 'gym==0.26.2', 'termcolor',
+        'click', 'gym==0.26.2', 'mujoco-py<2.2,>=2.1.2', 'termcolor',
     ],
 )

@@ -1,35 +1,48 @@
-# Mujoco Environments
-`mj_envs` is a collection of environments/tasks simulated with the [Mujoco](http://www.mujoco.org/) physics engine and wrapped in the OpenAI `gym` API.
+# Vision-based Adroit Environments
+This repo is an adaptation of `mj_envs` dexterious manipulation task suite (see https://github.com/vikashplus/mj_envs.git).
 
-## Getting Started
-`mj_envs` uses git submodules to resolve dependencies. Please follow steps exactly as below to install correctly.
 
-1. Clone this repo with pre-populated submodule dependencies
+## Setup Mods
+
+package updates
+
+* requirements.txt: gym, numpy, torch, torchvision, imageio, opencv_python
+
+* setup.py: 'mujoco-py<2.2,>=2.1.2' (if using mujoco 2.1)
+
 ```
-$ git clone --recursive https://github.com/vikashplus/mj_envs.git
+python3 -m pip install -r requirements.txt
 ```
-2. Install package using `pip`
+
+## Quick Started
+
+Download and setup Mujoco 2.1
+
+Avaialble at https://github.com/deepmind/mujoco/releases/tag/2.1.2
+
 ```
-$ pip install -e .
+mkdir -p /root/.mujoco/
+tar -xzf /mujoco2.1.1.tar.gz --directory /root/.mujoco/
+ln -s /root/.mujoco/mujoco-2.1.1 /root/.mujoco/mujoco2.1.1_linux || true
+ln -s /root/.mujoco/mujoco2.1.1_linux /root/.mujoco/mujoco210
+
 ```
-**OR**
-Add repo to pythonpath by updating `~/.bashrc` or `~/.bash_profile`
+
+Download source
+
+```
+$ git clone --recursive https://github.com/bilkitty/mj_envs.git
+```
+
+Setup refs to (a) this package, (b) mujoco bins and (c) graphics driver libs for driver preload
 ```
 export PYTHONPATH="<path/to/mj_envs_vision_vision>:$PYTHONPATH"
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin
+export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libGLEW.so:/usr/lib/nvidia-384/libGL.so
 ```
-3. You can visualize the environments with random controls using the below command
+
+Visualisation test
+
 ```
 $ python utils/visualize_env.py --env_name hammer-v0
 ```
-**NOTE:** If the visualization results in a GLFW error, this is because `mujoco-py` does not see some graphics drivers correctly. This can usually be fixed by explicitly loading the correct drivers before running the python script. See [this page](https://github.com/aravindr93/mjrl/tree/master/setup#known-issues) for details.
-
-
-
-requirements.txt updates
-setup.py remove requirement 'mujoco-py<2.2,>=2.0' to avoid this error:
-  numpy https://github.com/openai/mujoco-py/issues/607
-    File "/home/bilkit/anaconda3/envs/mj_env/lib/python3.8/site-packages/mujoco_py/builder.py", line 125, in load_dynamic_ext
-      return loader.load_module()
-    File "mujoco_py/cymj.pyx", line 1, in init mujoco_py.cymj
-  ValueError: numpy.ndarray size changed, may indicate binary incompatibility. Expected 96 from C header, got 80 from PyObject
-
