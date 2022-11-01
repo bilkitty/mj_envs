@@ -1,9 +1,8 @@
 import os
 import click
 import pickle
-import numpy as np
+import mj_envs_vision
 from PIL import Image
-from gym.wrappers.order_enforcing import OrderEnforcing
 from mjrl.utils.gym_env import GymEnv
 from mjrl.policies.gaussian_mlp import MLP
 
@@ -25,15 +24,7 @@ USAGE:\n
 
 
 def main(env_name, policy, mode, seed, episodes, save_mode):
-    try:
-        # TODO: make sure all envs can be instantiated here without hardcoding namespace
-        e = GymEnv(env_name)
-    except:
-        print("retry create env")
-        e = GymEnv(f'mj_envs_vision:{env_name}')
-        if not isinstance(e, OrderEnforcing): # while?
-            e.env = e.env.env # unwrap timelimit
-
+    e = GymEnv(env_name)
     e.set_seed(seed)
     if policy is not None:
         pi = pickle.load(open(policy, 'rb'))
