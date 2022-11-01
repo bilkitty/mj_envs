@@ -2,6 +2,7 @@ import numpy as np
 from gym import utils
 import torch
 import torchvision
+from mujoco_py import MjRenderContextOffscreen
 #from contacts import _contact_data
 
 class HeadlessObserver(utils.EzPickle):
@@ -13,9 +14,6 @@ class HeadlessObserver(utils.EzPickle):
         self._resize = torchvision.transforms.Resize((64, 64))
         self._center_crop = torchvision.transforms.CenterCrop((128, 128))
         utils.EzPickle.__init__(self)
-
-        # setup rendering
-        self.mj_viewer_headless_setup()
 
 
     def mj_viewer_headless_setup(self):

@@ -10,16 +10,15 @@ ADD_BONUS_REWARDS = True
 DEFAULT_FRAME_SKIP = 1
 DEFAULT_DT = 0.1
 
+
 class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
     def __init__(self):
         self.door_hinge_did = 0
         self.door_bid = 0
         self.grasp_sid = 0
         self.handle_sid = 0
-
         curr_dir = os.path.dirname(os.path.abspath(__file__))
         mujoco_env.MujocoEnv.__init__(self, curr_dir+'/assets/DAPG_door.xml', frame_skip=DEFAULT_FRAME_SKIP)
-
         # override rendering settings ---- but can't atm...
         self.metadata['video.frames_per_second'] = int(np.round(1.0 / DEFAULT_DT))
 
@@ -42,6 +41,7 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
 
         self.observer = HeadlessObserver(self.sim, self.door_bid)
         #self.observer.set_view('aerial')
+
 
     def step(self, a):
         a = np.clip(a, -1.0, 1.0)
@@ -88,17 +88,8 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         else:
             door_open = -1.0
         latch_pos = qp[-1]
-        # Ensure type is compatible with that of the default observation spec
-        # TODO: need MjModel->ptr of type mujoco._structs.MjModel...
-        #x = _contact_data(self.sim.data, self.sim.model, self.contact_type).squeeze(0)
-        x = np.zeros(3)
-        return np.concatenate([qp[1:-2], [latch_pos], door_pos, palm_pos, handle_pos, palm_pos-handle_pos, [door_open],
-                               x]).astype('float32')
-        #return dict(
-        #    state=np.concatenate([qp[1:-2], [latch_pos], door_pos, palm_pos, handle_pos, palm_pos-handle_pos, [door_open]]).astype('float32'),
-        #    contacts=_contact_data(self.sim.data, self.sim.model, self.contact_type)
-        #)
 
+        return np.concatenate([qp[1:-2], [latch_pos], door_pos, palm_pos, handle_pos, palm_pos - handle_pos, [door_open]]).astype('float32')
 
     def reset_model(self):
         qp = self.init_qpos.copy()
@@ -131,12 +122,13 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.sim.forward()
 
     def mj_viewer_setup(self):
-        # TODO: viewer currently unusable
-        #       for local display
         self.viewer = MjViewer(self.sim)
         self.viewer.cam.azimuth = 90
         self.sim.forward()
         self.viewer.cam.distance = 1.5
+
+    def mj_viewer_headless_setup(self):
+        self.observer.mj_viewer_headless_setup()
 
     def evaluate_success(self, paths):
         num_success = 0
@@ -150,4 +142,3 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
 
     def render(self, *args, **kwargs):
         return self.observer.render(args, kwargs)
-

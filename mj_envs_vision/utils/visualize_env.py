@@ -2,6 +2,7 @@ import os
 import click
 import pickle
 import mj_envs_vision
+from gym.wrappers.time_limit import TimeLimit
 from PIL import Image
 from mjrl.utils.gym_env import GymEnv
 from mjrl.policies.gaussian_mlp import MLP
@@ -42,6 +43,12 @@ def main(env_name, policy, mode, seed, episodes, save_mode):
 ENABLE_RESIZE = False
 RESULTS_DIR = '/home/bilkit/Workspace/mj_envs_vision/results'
 def record_policy(gym_env, num_episodes, mode, env_name="unk", policy_name="unk", policy=None):
+    # unwrap time limit envs for step
+    if isinstance(gym_env.env, TimeLimit):
+        gym_env.env = gym_env.env.env
+
+    gym_env.env.mj_viewer_headless_setup()
+
     # roll out policy for k episodes
     trajectory = []
     for k in range(num_episodes):

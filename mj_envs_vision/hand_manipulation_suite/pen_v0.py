@@ -140,6 +140,9 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.viewer.cam.distance = 1.0
 
     def mj_viewer_headless_setup(self):
+        self.observer.mj_viewer_headless_setup()
+
+    def mj_viewer_headless_setup(self):
         # configure simulation cam
         self.sim.render(64, 64)
         self.sim.forward()
