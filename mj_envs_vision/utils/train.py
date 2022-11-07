@@ -7,7 +7,7 @@ from dependencies.PlaNet import memory
 from dependencies.PlaNet import env
 from mjrl.utils import gym_env
 from mj_envs_vision.algos.baselines import Planet
-from mj_envs_vision.utils.config import Config
+from mj_envs_vision.algos.baselines import PlanetConfig
 
 
 def train(config, env, experience, policy, optimiser):
@@ -91,7 +91,7 @@ if __name__ == "__main__":
   #       compare metrics of this training loop with those of PlaNet/main.py
 
   # load user defined parameters
-  config = Config()
+  config = PlanetConfig()
   config.load("mj_envs_vision/utils/test_config.json")
   print(config.str())
 
@@ -106,14 +106,15 @@ if __name__ == "__main__":
   else:
     config.device = torch.device('cpu')
 
-  # TODO: create worker setup and parallelise
-  # initialise policy
-  policy = Planet(config)
-  if config.models_path != "":
-    policy.load_models(config.models_path)
 
   # instantiate env
   E = make_env(config)
+
+  # TODO: create worker setup and parallelise
+  # initialise policy
+  policy = Planet(config, E.action_size, E.observation_size)
+  if config.models_path != "":
+    policy.load_models(config.models_path)
 
   # initialise experience buffer (TODO: consider rewriting)
   experience = memory.ExperienceReplay(config.experience_size,
