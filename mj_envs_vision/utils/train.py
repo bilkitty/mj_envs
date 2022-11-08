@@ -1,5 +1,6 @@
 import os
 import torch
+import time
 import numpy as np
 from PIL import Image
 from gym.wrappers.time_limit import TimeLimit
@@ -20,6 +21,8 @@ from mj_envs_vision.algos.baselines import PlanetConfig
 from mj_envs_vision.algos.baselines import PlanetMetrics
 
 
+PROF = True
+
 def flatten(x):
   sh = x.shape # TODO: same as size?
   return x.view(sh[0] * sh[1], *sh[2:])
@@ -28,39 +31,32 @@ def expand(x_flat, sh):
   return x_flat.view(sh[0], sh[1], *x_flat.shape[1:])
 
 
-def train(config, E, experience, policy, optimiser):
+def train(config, experience, policy, optimiser, enable_overshooting=False):
   metrics = PlanetMetrics()
   for t in range(config.sample_iters):
-    # sample iid
+    # sample data iid
     obs, actions, rewards, not_done = experience.sample(config.batch_size, config.chunk_size)
-    # compute embeddings of gt next states
-    z_flat = policy.models["encoder"](flatten(obs[1:]))
-    z_gt = expand(z_flat, obs[1:].shape)
-    b0 = torch.zeros(config.batch_size, config.belief_size, device=config.device) # initial belief
+    z_gt = expand(policy.models["encoder"](flatten(obs[1:])), obs[1:].shape) # embeddings of gt next state
+    b0 = torch.zeros(config.batch_size, config.belief_size, device=config.device) # TODO: does this init matter?
     x0 = torch.zeros(config.batch_size, config.state_size, device=config.device)
     fwd_pred = policy.models["transition"](x0, actions[:-1], b0, z_gt, not_done[:-1])
     beliefs, prior_x, prior_mean, prior_std = fwd_pred[:4]
     post_x, post_mean, post_std = fwd_pred[4:]
+    # predict current reward and next obs
     r = expand(policy.models["reward"](flatten(beliefs), flatten(post_x)), beliefs.shape)
     o = expand(policy.models["observation"](flatten(beliefs), flatten(post_x)), beliefs.shape)
-    mse_rewards = F.mse_loss(r, rewards[:-1], reduction='none')
-    mse_pixels = F.mse_loss(o, obs[1:], reduction='none').sum(dim=(2, 3, 4))
-
-    # compute loss
+    # compute losses
     P = Normal(post_mean, post_std)
     Q = Normal(prior_mean, prior_std)
     nats = torch.full((1,), config.free_nats, dtype=torch.float32, device=config.device)
+    mse_rewards = F.mse_loss(r, rewards[:-1], reduction='none')
+    mse_pixels = F.mse_loss(o, obs[1:], reduction='none').sum(dim=(2, 3, 4))
     metrics.observation_loss.append(mse_pixels.mean(dim=(0, 1)))
     metrics.reward_loss.append(mse_rewards.mean(dim=(0, 1)))
-    metrics.kl_loss.append(torch.max(kl_divergence(P, Q).sum(dim=2), nats).mean(dim=(0, 1))) # enforce lower bound
-
-    # update models
-
-    # generate action
-
-    # forward sim
-
+    # TODO: include overshooting
+    metrics.kl_loss.append(torch.max(kl_divergence(P, Q).sum(dim=2), nats).mean(dim=(0, 1)))
     L = metrics.current_loss()
+    # update models
     optimiser.zero_grad()
     L.backward()
     nn.utils.clip_grad_norm_(policy.params_list, config.grad_clip_norm, norm_type=2)
@@ -68,8 +64,7 @@ def train(config, E, experience, policy, optimiser):
   return metrics
 
 
-
-def evaluate(config,  policy):
+def evaluate(config, policy):
   # instantiate test env
 
 
@@ -229,13 +224,33 @@ if __name__ == "__main__":
                                                    float(E.action_space.low[0]),
                                                    float(E.action_space.high[0]))
 
+  train_time = list()
+  eval_time = list()
+  sim_time = list()
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
-    train(config, E, experience, policy, optimiser)
+    if PROF: tns = time.time_ns()
+    train_metrics = train(config, experience, policy, optimiser)
+    if PROF: train_time.append(time.time_ns() - tns)
+    # TODO: dump metrics to tensorboard
+    # generate action
+    # forward sim
+    if PROF: tns = time.time_ns()
     collect_experience(config, E, experience, policy)
+    if PROF: sim_time.append(time.time_ns() - tns)
     if ep % config.test_interval:
-      evaluate(config, policy)
+      if PROF: tns = time.time_ns()
+      for m in policy.models.values(): m.eval()
+      eval_metrics = evaluate(config, policy)
+      for m in policy.models.values(): m.train()
+      if PROF: eval_time.append(time.time_ns() - tns)
+      # TODO: dump metrics to tensorboard
 
   # save performance metrics
   # visualise performance
+
+  if PROF:
+    train_time, eval_time, sim_time = [t / 1e6 for t in train_time], [t / 1e6 for t in eval_time], [t / 1e6 for t in sim_time]
+    print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s\n\t{np.median(sim_time): .2f}s")
+    print(f"total time:\n\t{np.sum(train_time)/60: .2f}m\n\t{np.sum(eval_time)/60: .2f}m\n\t{np.sum(sim_time)/60: .2f}m")
 
   print("done :)")
