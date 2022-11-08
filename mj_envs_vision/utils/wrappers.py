@@ -28,6 +28,9 @@ class EnvWrapper:
     obs, reward, done = self.env.step(action)[:3]
     return obs, reward, done
 
+  def close(self):
+    self.env.close()
+
   def sample_action(self):
     if self.is_adroit:
       return torch.FloatTensor(self.env.action_space.sample())
