@@ -1,4 +1,10 @@
 {
     "seed" : 3,
-    "env_name" : "MountainCarContinuous-v0"
+    "env_name" : "Ant-v2",
+    "sample_iters" : 10,
+    "max_episodes" : 2,
+    "max_episode_length" : 3,
+    "batch_size" : 3,
+    "chunk_size" : 3,
+    "action_repeat" : 1
 }
