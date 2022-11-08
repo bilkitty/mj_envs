@@ -63,6 +63,7 @@ def train(config, experience, policy, optimiser, enable_overshooting=False):
     optimiser.zero_grad()
     L.backward()
     nn.utils.clip_grad_norm_(policy.params_list, config.grad_clip_norm, norm_type=2)
+    optimiser.step()
 
   return metrics
 
