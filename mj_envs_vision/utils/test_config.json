@@ -1,10 +1,10 @@
 {
     "seed" : 3,
     "env_name" : "Ant-v2",
-    "sample_iters" : 10,
-    "max_episodes" : 2,
-    "max_episode_length" : 3,
-    "batch_size" : 3,
-    "chunk_size" : 3,
+    "sample_iters" : 100,
+    "max_episodes" : 20,
+    "max_episode_length" : 100,
+    "batch_size" : 10,
+    "chunk_size" : 10,
     "action_repeat" : 1
 }
