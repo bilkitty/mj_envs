@@ -1,25 +1,72 @@
 import os
+import torch
 import numpy as np
 from PIL import Image
 from gym.wrappers.time_limit import TimeLimit
 from gym.wrappers.pixel_observation import PixelObservationWrapper
+
+from tqdm import tqdm
+from torch import nn
+from torch import optim
+from torch.nn import functional as F
+from torch.distributions import Normal
+from torch.distributions import kl_divergence
+import dependencies.PlaNet.planner
 from dependencies.PlaNet import memory
 from dependencies.PlaNet import env
 from mjrl.utils import gym_env
 from mj_envs_vision.algos.baselines import Planet
 from mj_envs_vision.algos.baselines import PlanetConfig
+from mj_envs_vision.algos.baselines import PlanetMetrics
 
 
-def train(config, env, experience, policy, optimiser):
-  # sample from experience
+def flatten(x):
+  sh = x.shape # TODO: same as size?
+  return x.view(sh[0] * sh[1], *sh[2:])
 
-  # update models
+def expand(x_flat, sh):
+  return x_flat.view(sh[0], sh[1], *x_flat.shape[1:])
 
-  # generate action
 
-  # forward sim
+def train(config, E, experience, policy, optimiser):
+  metrics = PlanetMetrics()
+  for t in range(config.sample_iters):
+    # sample iid
+    obs, actions, rewards, not_done = experience.sample(config.batch_size, config.chunk_size)
+    # compute embeddings of gt next states
+    z_flat = policy.models["encoder"](flatten(obs[1:]))
+    z_gt = expand(z_flat, obs[1:].shape)
+    b0 = torch.zeros(config.batch_size, config.belief_size, device=config.device) # initial belief
+    x0 = torch.zeros(config.batch_size, config.state_size, device=config.device)
+    fwd_pred = policy.models["transition"](x0, actions[:-1], b0, z_gt, not_done[:-1])
+    beliefs, prior_x, prior_mean, prior_std = fwd_pred[:4]
+    post_x, post_mean, post_std = fwd_pred[4:]
+    r = expand(policy.models["reward"](flatten(beliefs), flatten(post_x)), beliefs.shape)
+    o = expand(policy.models["observation"](flatten(beliefs), flatten(post_x)), beliefs.shape)
+    mse_rewards = F.mse_loss(r, rewards[:-1], reduction='none')
+    mse_pixels = F.mse_loss(o, obs[1:], reduction='none').sum(dim=(2, 3, 4))
 
-  pass
+    # compute loss
+    P = Normal(post_mean, post_std)
+    Q = Normal(prior_mean, prior_std)
+    nats = torch.full((1,), config.free_nats, dtype=torch.float32, device=config.device)
+    metrics.observation_loss.append(mse_pixels.mean(dim=(0, 1)))
+    metrics.reward_loss.append(mse_rewards.mean(dim=(0, 1)))
+    metrics.kl_loss.append(torch.max(kl_divergence(P, Q).sum(dim=2), nats).mean(dim=(0, 1))) # enforce lower bound
+
+    # update models
+
+    # generate action
+
+    # forward sim
+
+    L = metrics.current_loss()
+    optimiser.zero_grad()
+    L.backward()
+    nn.utils.clip_grad_norm_(policy.params_list, config.grad_clip_norm, norm_type=2)
+
+  return metrics
+
 
 
 def evaluate(config,  policy):
@@ -30,11 +77,27 @@ def evaluate(config,  policy):
   pass
 
 
-import torch
+def collect_experience(config, E, experience, policy):
+  action = torch.zeros(1, E.action_size, device=config.device)
+  belief = torch.zeros(1, config.belief_size, device=config.device)
+  post_state = torch.zeros(1, config.state_size, device=config.device)
+  obs = E.reset()
+  for t in tqdm(range(config.max_episode_length // config.action_repeat)):
+    # compute new belief
+    # generate new action
+    # fwd sim to get next obs, reward, info
+    # update experience
+    pass
+
+
 class EnvWrapper:
   def __init__(self, env, is_adroit):
     self.env = env
     self.is_adroit = is_adroit
+
+  @property
+  def action_space(self):
+    return self.env.action_space if self.is_adroit else self.env._env.action_space
 
   @property
   def action_size(self):
@@ -85,6 +148,16 @@ def to_input_obs(frame: np.ndarray):
   """ converts image with pels in [0, 255] to image observation with pels in [-0.5, 0.5] """
   return (frame.transpose((2, 0, 1)) / 255 - 0.5).astype('float')
 
+def visualise_batch_from_experience(config, experience, out_dir):
+  # visualise experience for debugging
+  pils = list()
+  batch = experience.sample(min(config.batch_size, experience.idx - 1), min(config.chunk_size, experience.idx - 1))
+  for obs in batch[0].reshape(-1, *E.observation_size).cpu():
+    pils.append(Image.fromarray(to_image_frame(obs.numpy())))
+
+  pils[0].save(os.path.join(out_dir, f'experience_0.gif'),
+               append_images=pils, save_all=True, optimize=False, loop=True, duration=len(pils) / 30)
+
 
 if __name__ == "__main__":
   # TODO: sanity check
@@ -94,6 +167,10 @@ if __name__ == "__main__":
   config = PlanetConfig()
   config.load("mj_envs_vision/utils/test_config.json")
   print(config.str())
+
+  # validate params
+  assert config.batch_size <= config.max_episode_length // config.action_repeat
+  assert config.chunk_size <= config.max_episode_length // config.action_repeat
 
   # setup
   out_dir = os.path.join("results", f"train_{config.run_id}")
@@ -106,7 +183,6 @@ if __name__ == "__main__":
   else:
     config.device = torch.device('cpu')
 
-
   # instantiate env
   E = make_env(config)
 
@@ -115,6 +191,9 @@ if __name__ == "__main__":
   policy = Planet(config, E.action_size, E.observation_size)
   if config.models_path != "":
     policy.load_models(config.models_path)
+
+  # initialise optimiser
+  optimiser = optim.Adam(policy.params_list, lr=config.learning_rate, eps=config.adam_epsilon)
 
   # initialise experience buffer (TODO: consider rewriting)
   experience = memory.ExperienceReplay(config.experience_size,
@@ -133,22 +212,28 @@ if __name__ == "__main__":
       obs, rwd, done = E.step(action)
       t = t + 1
 
-  a, b = E.observation_size, E.action_size
+  visualise_batch_from_experience(config, experience, out_dir)
 
-  # visualise experience for debugging
-  pils = list()
-  batch = experience.sample(config.batch_size, config.chunk_size)
-  for obs in batch[0].reshape(-1, *E.observation_size).cpu():
-    pils.append(Image.fromarray(to_image_frame(obs.numpy())))
+  # initialise priors and planner
+  free_nats = torch.full((1,), config.free_nats, dtype=torch.float32, device=config.device)
+  zero_mean = torch.zeros(config.batch_size, config.state_size, device=config.device)
+  unit_var = torch.ones(config.batch_size, config.state_size, device=config.device)
+  state_prior = torch.distributions.Normal(zero_mean, unit_var)
+  planner = dependencies.PlaNet.planner.MPCPlanner(E.action_size,
+                                                   config.planning_horizon,
+                                                   config.optimisation_iters,
+                                                   config.candidates,
+                                                   config.top_candidates,
+                                                   policy.models["transition"],
+                                                   policy.models["reward"],
+                                                   float(E.action_space.low[0]),
+                                                   float(E.action_space.high[0]))
 
-  pils[0].save(os.path.join(out_dir, f'experience_0.gif'),
-               append_images=pils, save_all=True, optimize=False, loop=True, duration=len(pils) / 30)
-
-
-  # for N episodes
-  #   train on env
-  #   (opt) evalute on test env
-  #   collect experience
+  for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
+    train(config, E, experience, policy, optimiser)
+    collect_experience(config, E, experience, policy)
+    if ep % config.test_interval:
+      evaluate(config, policy)
 
   # save performance metrics
   # visualise performance
