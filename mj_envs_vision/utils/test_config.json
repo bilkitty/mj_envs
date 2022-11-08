@@ -1,6 +1,6 @@
 {
     "seed" : 3,
-    "env_name" : "Ant-v2",
+    "env_name" : "Walker2d-v2",
     "sample_iters" : 100,
     "max_episodes" : 20,
     "max_episode_length" : 100,

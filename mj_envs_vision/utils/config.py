@@ -62,7 +62,7 @@ class Config:
   def str(self):
     s = "Parameters:\n"
     for att, v in self.__dict__.items():
-      s += f"\t\t{att:<20} = {v}\n"
+      s += f"\t\t{att:<25} = {v}\n"
     return s
 
 

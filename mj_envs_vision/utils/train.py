@@ -2,8 +2,6 @@ import os
 import torch
 import time
 import numpy as np
-from PIL import Image
-from gym.wrappers.time_limit import TimeLimit
 
 from tqdm import tqdm
 from torch import nn
@@ -12,11 +10,11 @@ from torch.nn import functional as F
 from torch.distributions import Normal
 from torch.distributions import kl_divergence
 from dependencies.PlaNet import memory
-from dependencies.PlaNet import env
-from mjrl.utils import gym_env
 from mj_envs_vision.algos.baselines import Planet
 from mj_envs_vision.algos.baselines import PlanetConfig
 from mj_envs_vision.algos.baselines import PlanetMetrics
+from mj_envs_vision.utils.wrappers import make_env
+from mj_envs_vision.utils.helpers import visualise_batch_from_experience
 
 
 PROF = True
@@ -89,75 +87,6 @@ def collect_experience(config, E, experience, policy):
       obs = next_obs
 
     return total_rwd
-
-
-class EnvWrapper:
-  def __init__(self, env, is_adroit):
-    self.env = env
-    self.is_adroit = is_adroit
-
-  @property
-  def action_space(self):
-    return self.env.action_space if self.is_adroit else self.env._env.action_space
-
-  @property
-  def action_size(self):
-    return self.env.action_dim if self.is_adroit else self.env.action_size
-
-  @property
-  def observation_size(self):
-    return self.env.observation_dim if self.is_adroit else self.env.observation_size
-
-  def reset(self):
-    return self.env.reset()
-
-  def step(self, action):
-    obs, reward, done = self.env.step(action)[:3]
-    return obs, rwd, done
-
-  def sample_action(self):
-    if self.is_adroit:
-      return torch.FloatTensor(self.env.action_space.sample())
-    else:
-      return torch.FloatTensor(self.env._env.action_space.sample())
-
-
-def make_env(config):
-  if config.env_name in ['door-v0', 'pen-v0', 'haammer-v0', 'relocate-v0']:
-    e = gym_env.GymEnv(config.env_name)
-    e.set_seed(config.seed)
-    if isinstance(e.env, TimeLimit):
-      e = e.env.env
-    return EnvWrapper(e, is_adroit=True)
-  else:
-    assert config.env_name in env.GYM_ENVS
-    e = env.GymEnv(config.env_name,
-                      config.state_type == "vector",
-                      config.seed,
-                      config.max_episode_length,
-                      config.action_repeat,
-                      config.bit_depth)
-    if isinstance(e._env, TimeLimit):
-      e._env = e._env.env
-    return EnvWrapper(e, is_adroit=False)
-
-def to_image_frame(obs: np.ndarray):
-  """ converts image observation with pels in [-0.5, 0.5] to image with pels in [0, 255] """
-  return (255 * (obs.transpose((1, 2, 0)) + 0.5)).astype('uint8')
-
-def to_input_obs(frame: np.ndarray):
-  """ converts image with pels in [0, 255] to image observation with pels in [-0.5, 0.5] """
-  return (frame.transpose((2, 0, 1)) / 255 - 0.5).astype('float')
-
-def visualise_batch_from_experience(id, config, experience, out_dir):
-  # primarily for debugging
-  pils = list()
-  batch = experience.sample(min(config.batch_size, experience.idx - 1), min(config.chunk_size, experience.idx - 1))
-  for obs in batch[0].reshape(-1, *E.observation_size).cpu():
-    pils.append(Image.fromarray(to_image_frame(obs.numpy())))
-
-  pils[0].save(os.path.join(out_dir, f'experience_{id}.gif'),
-               append_images=pils, save_all=True, optimize=False, loop=True, duration=len(pils) / 10)
 
 
 if __name__ == "__main__":
@@ -233,7 +162,7 @@ if __name__ == "__main__":
   # save performance metrics
   # visualise performance
   for i in range(5):
-    visualise_batch_from_experience(i, config, experience, out_dir)
+    visualise_batch_from_experience(i, config, experience, E.observation_size, out_dir)
 
   if PROF:
     train_time, eval_time, sim_time = [t / 1e9 for t in train_time], [t / 1e9 for t in eval_time], [t / 1e9 for t in sim_time]
