@@ -15,6 +15,8 @@ from mj_envs_vision.algos.baselines import PlanetConfig
 from mj_envs_vision.algos.baselines import PlanetMetrics
 from mj_envs_vision.utils.wrappers import make_env
 from mj_envs_vision.utils.helpers import visualise_batch_from_experience
+from mj_envs_vision.utils.helpers import visualise_trajectory
+from mj_envs_vision.utils.helpers import plot_rewards
 
 
 PROF = True
@@ -65,12 +67,31 @@ def train(config, experience, policy, optimiser, enable_overshooting=False):
   return metrics
 
 
-def evaluate(config, policy):
-  # instantiate test env
+def evaluate(config, policy, count=10):
+  with torch.no_grad():
+    total_rwds = []
+    trajectories = []
+    for i in range(count): # consider threading?
+      # roll out policy
+      rwd = 0.0
+      traj = []
+      T = make_env(config)
+      obs = T.reset()
+      policy.initialise(**dict(count=1))
+      for t in tqdm(range(config.max_episode_length // config.action_repeat)):
+        action = policy.sample_action(obs).squeeze(dim=0).cpu()
+        next_obs, r, done = E.step(action)
+        traj.append((obs.squeeze(dim=0), action, r))
+        rwd += r
+        obs = next_obs
 
+      T.env.close()
+      # record final obs
+      traj.append((next_obs.squeeze(dim=0), torch.zeros_like(action), r))
+      total_rwds.append(rwd)
+      trajectories.append(traj)
 
-  # close env
-  pass
+    return total_rwds, trajectories
 
 
 def collect_experience(config, E, experience, policy):
@@ -129,18 +150,24 @@ if __name__ == "__main__":
                                        config.bit_depth,
                                        config.device)
 
-  for n in range(config.seed_episodes):
-    t, rwd, done = 0, 0.0, False
-    obs = E.reset()
-    while not done and t < config.max_episode_length:
-      action = E.sample_action()
-      experience.append(obs, action, rwd, done)
-      obs, rwd, done = E.step(action)
-      t = t + 1
+  # seed buffer with requested batch and chunk size
+  rwd, done = 0.0, False
+  obs = E.reset()
+  while experience.idx <= max(config.batch_size, config.chunk_size):
+    if done:
+      rwd, done = 0.0, False
+      obs = E.reset()
+
+    action = E.sample_action()
+    experience.append(obs, action, rwd, done)
+    obs, rwd, done = E.step(action)
 
   train_time = list()
   eval_time = list()
   sim_time = list()
+  exp_rewards = list()
+  episode_rewards = list()
+  episode_trajectories = list()
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
     if PROF: tns = time.time_ns()
     train_metrics = train(config, experience, policy, optimiser)
@@ -148,25 +175,37 @@ if __name__ == "__main__":
     # TODO: dump metrics to tensorboard
 
     if PROF: tns = time.time_ns()
-    collect_experience(config, E, experience, policy)
+    train_reward = collect_experience(config, E, experience, policy)
+    exp_rewards.append((ep, train_reward))
     if PROF: sim_time.append(time.time_ns() - tns)
 
-    if ep % config.test_interval:
+    if ep % config.test_interval == 0:
       if PROF: tns = time.time_ns()
       for m in policy.models.values(): m.eval()
-      eval_metrics = evaluate(config, policy)
+      rewards, trajs = evaluate(config, policy, count=10)
+      episode_rewards.append((ep, np.mean(rewards)))
+      episode_trajectories.append((ep, trajs))
       for m in policy.models.values(): m.train()
       if PROF: eval_time.append(time.time_ns() - tns)
       # TODO: dump metrics to tensorboard
+      visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
+      # TODO: rm
+      plot_rewards(exp_rewards).savefig(os.path.join(out_dir, "train_rewards.png"))
+      plot_rewards(episode_rewards).savefig(os.path.join(out_dir, "eval_rewards.png"))
 
-  # save performance metrics
+  E.close()
+
+  # save performance metrics (TODO: pickle)
+
   # visualise performance
+  plot_rewards(exp_rewards).savefig(os.path.join(out_dir, "train_rewards.png"))
+  plot_rewards(episode_rewards).savefig(os.path.join(out_dir, "eval_rewards.png"))
   for i in range(5):
     visualise_batch_from_experience(i, config, experience, E.observation_size, out_dir)
 
   if PROF:
     train_time, eval_time, sim_time = [t / 1e9 for t in train_time], [t / 1e9 for t in eval_time], [t / 1e9 for t in sim_time]
     print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s\n\t{np.median(sim_time): .2f}s")
-    print(f"total time:\n\t1x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr\n\t{np.sum(sim_time)/np.sum(train_time): .2f}x tr")
+    print(f"total time:\n\t1.00x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr\n\t{np.sum(sim_time)/np.sum(train_time): .2f}x tr")
 
   print("done :)")
