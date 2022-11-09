@@ -1,10 +1,12 @@
 {
+    "run_id" : 'repro',
     "seed" : 3,
     "env_name" : "Walker2d-v2",
     "sample_iters" : 100,
-    "max_episodes" : 20,
-    "max_episode_length" : 100,
-    "batch_size" : 10,
-    "chunk_size" : 10,
-    "action_repeat" : 1
+    "max_episodes" : 100,
+    "max_episode_length" : 200,
+    "test_interval" : 10,
+    "batch_size" : 50,
+    "chunk_size" : 50,
+    "action_repeat" : 2
 }

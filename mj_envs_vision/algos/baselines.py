@@ -9,8 +9,6 @@ from dependencies.PlaNet import memory
 from dependencies.PlaNet import planner
 from mj_envs_vision.utils.config import Config
 
-# TODO: base
-
 class PlanetConfig(Config):
   def __init__(self):
     Config.__init__(self)
@@ -25,10 +23,6 @@ class PlanetConfig(Config):
     self.planning_horizon = 12
     self.optimisation_iters = 10
 
-
-class Metrics: # todo: move out
-  def __init__(self):
-    self.total_return = list()
 
 class PlanetMetrics(Metrics):
   def __init__(self):
@@ -55,6 +49,7 @@ class Planet:
     self.action_size = action_size
     self.action_space = action_space
     self.device = config.device
+    self.metrics = PlanetMetrics()
     # TODO: track prediction errors
     self.initialise()
     self.models = dict(transition=models.TransitionModel(config.belief_size, config.state_size, action_size, config.hidden_size, config.embedding_size, config.activation_fn),
@@ -79,13 +74,44 @@ class Planet:
                               float(action_space.low[0]),
                               float(action_space.high[0]))
 
+    # global prior parameters for latent overshooting
+    self.zero_mean = torch.zeros(config.batch_size, config.state_size, device=config.device)
+    self.unit_var = torch.ones(config.batch_size, config.state_size, device=config.device)
 
   def load_models(self, models_path: str):
     pass
 
-  def update_models(self, obs: np.ndarray):
-    # state is a dictionary of belief, prior/post state, observation
-    pass
+  def update(self, sample_batch: List, optimiser):
+    assert len(sample_batch) == 4 # TODO: pack/unpack data
+    obs, actions, rewards, not_done = sample_batch
+
+    z_gt = expand(policy.models["encoder"](flatten_sample(obs[1:])), obs[1:].shape) # embeddings of gt next state
+    b0 = torch.zeros(config.batch_size, config.belief_size, device=config.device) # TODO: does this init matter?
+    x0 = torch.zeros(config.batch_size, config.state_size, device=config.device)
+    fwd_pred = policy.models["transition"](x0, actions[:-1], b0, z_gt, not_done[:-1])
+    beliefs, prior_x, prior_mean, prior_std = fwd_pred[:4]
+    post_x, post_mean, post_std = fwd_pred[4:]
+    # predict current reward and next obs
+    r = expand(policy.models["reward"](flatten_sample(beliefs), flatten_sample(post_x)), beliefs.shape)
+    o = expand(policy.models["observation"](flatten_sample(beliefs), flatten_sample(post_x)), beliefs.shape)
+    # compute losses
+    P = Normal(post_mean, post_std)
+    Q = Normal(prior_mean, prior_std)
+    nats = torch.full((1,), config.free_nats, dtype=torch.float32, device=config.device)
+    mse_rewards = F.mse_loss(r, rewards[:-1], reduction='none')
+    mse_pixels = F.mse_loss(o, obs[1:], reduction='none').sum(dim=(2, 3, 4))
+    self.metrics.observation_loss.append(mse_pixels.mean(dim=(0, 1)))
+    self.metrics.reward_loss.append(mse_rewards.mean(dim=(0, 1)))
+    # TODO: include overshooting
+    #state_prior = torch.distributions.Normal(zero_mean, unit_var)
+    self.metrics.kl_loss.append(torch.max(kl_divergence(P, Q).sum(dim=2), nats).mean(dim=(0, 1)))
+    L = self.metrics.current_loss()
+    # update models
+    optimiser.zero_grad()
+    L.backward()
+    nn.utils.clip_grad_norm_(policy.params_list, config.grad_clip_norm, norm_type=2)
+    optimiser.step()
+
 
   def initialise(self, *args, **kwargs):
     count = kwargs["count"] if "count" in list(kwargs.keys()) else self.batch_size

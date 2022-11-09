@@ -5,6 +5,12 @@ from typing import List, Tuple
 from matplotlib import pyplot as plt
 
 
+
+class Metrics:
+  def __init__(self):
+    self.total_return = list()
+
+
 def to_image_frame(obs: np.ndarray):
   """ converts image observation with pels in [-0.5, 0.5] to image with pels in [0, 255] """
   return (255 * (obs.transpose((1, 2, 0)) + 0.5)).astype('uint8')
