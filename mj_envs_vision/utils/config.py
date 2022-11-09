@@ -16,7 +16,7 @@ class Config:
     self.max_episodes = 1000
     self.max_episode_length = 500
     self.experience_size = 1000000
-    self.sample_iters = 100
+    self.sample_iters = 1000
     self.test_interval = 100
     self.activation_fn = 'relu'
     self.action_noise = 0.3
@@ -24,8 +24,6 @@ class Config:
     self.learning_rate_factor = 0 # linearly ramp up to learning rate with this slope
     self.adam_epsilon = 1e-4
     self.grad_clip_norm = 1000
-    self.planning_horizon = 12
-    self.optimisation_iters = 10
     self.candidates = 1000
     self.top_candidates = 100
     # Environment parameters

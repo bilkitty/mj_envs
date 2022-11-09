@@ -16,12 +16,14 @@ class PlanetConfig(Config):
     Config.__init__(self)
     self.belief_size = 200
     self.state_size = 30
-    self.embedding_size = 200
+    self.embedding_size = 1024
     self.hidden_size = 200
     self.overshooting_distance = 50
     self.overshooting_kl_beta = 0
     self.overshooting_reward_scale = 0
     self.free_nats = 3
+    self.planning_horizon = 12
+    self.optimisation_iters = 10
 
 
 class Metrics: # todo: move out
@@ -53,6 +55,7 @@ class Planet:
     self.action_size = action_size
     self.action_space = action_space
     self.device = config.device
+    # TODO: track prediction errors
     self.initialise()
     self.models = dict(transition=models.TransitionModel(config.belief_size, config.state_size, action_size, config.hidden_size, config.embedding_size, config.activation_fn),
         observation=models.ObservationModel(config.state_type == "vector", observation_size, config.belief_size, config.state_size, config.embedding_size, config.activation_fn),
