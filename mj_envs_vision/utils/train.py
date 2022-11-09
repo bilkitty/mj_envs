@@ -85,6 +85,7 @@ def evaluate(config, policy, count=10):
         traj.append((obs.squeeze(dim=0), action, r))
         rwd += r
         obs = next_obs
+        if done: break # TODO: is this bad?
 
       T.env.close()
       # record final obs
@@ -107,6 +108,7 @@ def collect_experience(config, E, experience, policy):
       experience.append(obs, action, rwd, done)
       total_rwd += rwd
       obs = next_obs
+      if done: break # TODO: is this bad?
 
     return total_rwd
 
@@ -184,10 +186,11 @@ if __name__ == "__main__":
       if PROF: tns = time.time_ns()
       for m in policy.models.values(): m.eval()
       rewards, trajs = evaluate(config, policy, count=10)
-      episode_rewards.append((ep, np.mean(rewards)))
-      episode_trajectories.append((ep, trajs))
       for m in policy.models.values(): m.train()
       if PROF: eval_time.append(time.time_ns() - tns)
+
+      episode_rewards.append((ep, np.mean(rewards)))
+      episode_trajectories.append((ep, trajs))
       # TODO: dump metrics to tensorboard
       visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
       # TODO: rm
