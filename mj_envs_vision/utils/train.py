@@ -80,7 +80,7 @@ def evaluate(config, policy, count=10):
       obs = T.reset()
       policy.initialise(**dict(count=1))
       for t in tqdm(range(config.max_episode_length // config.action_repeat)):
-        action = policy.sample_action(obs).squeeze(dim=0).cpu()
+        action = policy.act(obs).squeeze(dim=0).cpu()
         next_obs, r, done = E.step(action)
         traj.append((obs.squeeze(dim=0), action, r))
         rwd += r
