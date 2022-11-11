@@ -4,11 +4,7 @@ import time
 import numpy as np
 
 from tqdm import tqdm
-from torch import nn
 from torch import optim
-from torch.nn import functional as F
-from torch.distributions import Normal
-from torch.distributions import kl_divergence
 from dependencies.PlaNet import memory
 from mj_envs_vision.algos.baselines import Planet
 from mj_envs_vision.algos.baselines import PlanetConfig
@@ -20,15 +16,6 @@ from mj_envs_vision.utils.helpers import plot_rewards
 
 
 PROF = True
-
-# Helpers for processing samples drawn from experience
-def flatten_sample(x):
-  sh = x.shape # TODO: same as size?
-  return x.view(sh[0] * sh[1], *sh[2:])
-
-
-def expand(x_flat, sh):
-  return x_flat.view(sh[0], sh[1], *x_flat.shape[1:])
 
 
 def train(config, experience, policy, optimiser):
@@ -58,7 +45,6 @@ def evaluate(config, policy, count=10):
         traj.append((obs.squeeze(dim=0), action, r))
         rwd += r
         obs = next_obs
-        if done: break # TODO: is this bad?
 
       T.env.close()
       # record final obs
@@ -87,6 +73,7 @@ def train_policy(config, E, policy, optimiser):
   # populate buffer with requested batch and chunk size
   rwd, done = 0.0, False
   obs = E.reset()
+  print(f"Initialising experience replay with max(batch_size, chunk_size) samples")
   while experience.idx <= max(config.batch_size, config.chunk_size):
     if done:
       rwd, done = 0.0, False
@@ -114,13 +101,22 @@ def train_policy(config, E, policy, optimiser):
       for m in policy.models.values(): m.train()
       if PROF: eval_time.append(time.time_ns() - tns)
 
-      episode_rewards.append((ep, np.mean(rewards)))
+      episode_rewards.append((ep, rewards))
       episode_trajectories.append((ep, trajs))
       # TODO: dump metrics to tensorboard
       visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
       # TODO: rm
-      plot_rewards(exp_rewards).savefig(os.path.join(out_dir, "train_rewards.png"))
-      plot_rewards(episode_rewards).savefig(os.path.join(out_dir, "eval_rewards.png"))
+      #plot_rewards(exp_rewards).savefig(os.path.join(out_dir, "train_rewards.png"))
+      #plot_rewards(episode_rewards).savefig(os.path.join(out_dir, "eval_rewards.png"))
+
+  # TODO: rm
+  for i in range(5):
+    visualise_batch_from_experience(i, config, experience, E.observation_size, out_dir)
+
+  if PROF:
+    train_time, eval_time, sim_time = [t / 1e9 for t in train_time], [t / 1e9 for t in eval_time], [t / 1e9 for t in sim_time]
+    print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s\n\t{np.median(sim_time): .2f}s")
+    print(f"total time:\n\t1.00x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr\n\t{np.sum(sim_time)/np.sum(train_time): .2f}x tr")
 
   return exp_rewards, episode_rewards, episode_trajectories
 
@@ -137,7 +133,7 @@ def collect_experience(config, E, experience, policy):
       experience.append(obs, action, rwd, done)
       total_rwd += rwd
       obs = next_obs
-      if done: break # TODO: is this bad?
+      #if done: break # less time, but not good idea
 
     return total_rwd
 
@@ -145,10 +141,14 @@ def collect_experience(config, E, experience, policy):
 if __name__ == "__main__":
   # TODO [PENDING]: sanity check
   #       compare metrics of this training loop with those of PlaNet/main.py
+  import sys
 
   # load user defined parameters
   config = PlanetConfig()
-  config.load("mj_envs_vision/utils/test_config.json")
+  if len(sys.argv) == 1:
+    config.load("mj_envs_vision/utils/test_config.json")
+  else:
+    config.load(sys.argv[1])
   print(config.str())
 
   # validate params
@@ -182,12 +182,5 @@ if __name__ == "__main__":
   # visualise performance
   plot_rewards(exp_rewards).savefig(os.path.join(out_dir, "train_rewards.png"))
   plot_rewards(episode_rewards).savefig(os.path.join(out_dir, "eval_rewards.png"))
-  for i in range(5):
-    visualise_batch_from_experience(i, config, experience, E.observation_size, out_dir)
-
-  if PROF:
-    train_time, eval_time, sim_time = [t / 1e9 for t in train_time], [t / 1e9 for t in eval_time], [t / 1e9 for t in sim_time]
-    print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s\n\t{np.median(sim_time): .2f}s")
-    print(f"total time:\n\t1.00x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr\n\t{np.sum(sim_time)/np.sum(train_time): .2f}x tr")
 
   print("done :)")
