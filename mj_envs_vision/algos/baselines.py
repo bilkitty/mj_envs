@@ -1,5 +1,10 @@
 import torch
 import numpy as np
+from typing import List
+from torch import nn
+from torch.nn import functional as F
+from torch.distributions import Normal
+from torch.distributions import kl_divergence
 from dependencies.PlaNet import env
 from dependencies.PlaNet import models
 from dependencies.PlaNet.planner import MPCPlanner
@@ -8,6 +13,11 @@ from dependencies.PlaNet.planner import MPCPlanner
 from dependencies.PlaNet import memory
 from dependencies.PlaNet import planner
 from mj_envs_vision.utils.config import Config
+from mj_envs_vision.utils.helpers import Metrics
+from mj_envs_vision.utils.helpers import expand, flatten_sample
+
+
+
 
 class PlanetConfig(Config):
   def __init__(self):
@@ -42,6 +52,8 @@ class PlanetMetrics(Metrics):
 
 class Planet:
   def __init__(self, config, action_size, observation_size, action_space):
+    self.free_nats = config.free_nats
+    self.grad_clip_norm = config.grad_clip_norm
     self.batch_size = config.batch_size
     self.belief_size = config.belief_size
     self.state_size = config.state_size
@@ -50,7 +62,7 @@ class Planet:
     self.action_space = action_space
     self.device = config.device
     self.metrics = PlanetMetrics()
-    # TODO: track prediction errors
+    # TODO: track prediction errors + provide reconstructions for vis
     self.initialise()
     self.models = dict(transition=models.TransitionModel(config.belief_size, config.state_size, action_size, config.hidden_size, config.embedding_size, config.activation_fn),
         observation=models.ObservationModel(config.state_type == "vector", observation_size, config.belief_size, config.state_size, config.embedding_size, config.activation_fn),
@@ -85,19 +97,19 @@ class Planet:
     assert len(sample_batch) == 4 # TODO: pack/unpack data
     obs, actions, rewards, not_done = sample_batch
 
-    z_gt = expand(policy.models["encoder"](flatten_sample(obs[1:])), obs[1:].shape) # embeddings of gt next state
-    b0 = torch.zeros(config.batch_size, config.belief_size, device=config.device) # TODO: does this init matter?
-    x0 = torch.zeros(config.batch_size, config.state_size, device=config.device)
-    fwd_pred = policy.models["transition"](x0, actions[:-1], b0, z_gt, not_done[:-1])
+    z_gt = expand(self.models["encoder"](flatten_sample(obs[1:])), obs[1:].shape) # embeddings of gt next state
+    b0 = torch.zeros(self.batch_size, self.belief_size, device=self.device) # TODO: does this init matter?
+    x0 = torch.zeros(self.batch_size, self.state_size, device=self.device)
+    fwd_pred = self.models["transition"](x0, actions[:-1], b0, z_gt, not_done[:-1])
     beliefs, prior_x, prior_mean, prior_std = fwd_pred[:4]
     post_x, post_mean, post_std = fwd_pred[4:]
     # predict current reward and next obs
-    r = expand(policy.models["reward"](flatten_sample(beliefs), flatten_sample(post_x)), beliefs.shape)
-    o = expand(policy.models["observation"](flatten_sample(beliefs), flatten_sample(post_x)), beliefs.shape)
+    r = expand(self.models["reward"](flatten_sample(beliefs), flatten_sample(post_x)), beliefs.shape)
+    o = expand(self.models["observation"](flatten_sample(beliefs), flatten_sample(post_x)), beliefs.shape)
     # compute losses
     P = Normal(post_mean, post_std)
     Q = Normal(prior_mean, prior_std)
-    nats = torch.full((1,), config.free_nats, dtype=torch.float32, device=config.device)
+    nats = torch.full((1,), self.free_nats, dtype=torch.float32, device=self.device)
     mse_rewards = F.mse_loss(r, rewards[:-1], reduction='none')
     mse_pixels = F.mse_loss(o, obs[1:], reduction='none').sum(dim=(2, 3, 4))
     self.metrics.observation_loss.append(mse_pixels.mean(dim=(0, 1)))
@@ -109,7 +121,7 @@ class Planet:
     # update models
     optimiser.zero_grad()
     L.backward()
-    nn.utils.clip_grad_norm_(policy.params_list, config.grad_clip_norm, norm_type=2)
+    nn.utils.clip_grad_norm_(self.params_list, self.grad_clip_norm, norm_type=2)
     optimiser.step()
 
 
