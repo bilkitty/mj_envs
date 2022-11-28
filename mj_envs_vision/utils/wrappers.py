@@ -14,6 +14,10 @@ class EnvWrapper:
     return self.env.action_space if self.is_adroit else self.env._env.action_space
 
   @property
+  def observation_space(self):
+    return self.env.observation_space if self.is_adroit else self.env._env.observation_space
+
+  @property
   def action_size(self):
     return self.env.action_dim if self.is_adroit else self.env.action_size
 
