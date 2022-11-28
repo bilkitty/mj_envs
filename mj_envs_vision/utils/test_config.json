@@ -1,8 +1,9 @@
 {
-    "run_id" : 'repro',
+    "run_id" : "repro",
     "seed" : 3,
     "env_name" : "Walker2d-v2",
     "sample_iters" : 100,
+    "learning_rate" : 3e-3,
     "max_episodes" : 100,
     "max_episode_length" : 200,
     "test_interval" : 10,
