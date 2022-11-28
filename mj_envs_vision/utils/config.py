@@ -3,6 +3,7 @@
 # procedures
 import json
 
+
 class Config:
   def __init__(self):
     # General parameters
@@ -20,7 +21,7 @@ class Config:
     self.test_interval = 100
     self.activation_fn = 'relu'
     self.action_noise = 0.3
-    self.learning_rate = 3e-3
+    self.learning_rate = 1e-3
     self.learning_rate_factor = 0 # linearly ramp up to learning rate with this slope
     self.adam_epsilon = 1e-4
     self.grad_clip_norm = 1000
@@ -47,10 +48,10 @@ class Config:
 
     # TODO: is it okay to use __dict__?
     for att, v in cfg.items():
-      if not att in list(self.__dict__.keys()):
-        raise KeyError(f"No such config field, '{att}'.")
-      else:
+      if att in list(self.__dict__.keys()):
         self.__dict__[att] = v
+      else:
+        print(f"No such config field, '{att}'.")
 
     fp.close()
 
@@ -63,5 +64,23 @@ class Config:
       s += f"\t\t{att:<25} = {v}\n"
     return s
 
-
   # TODO: get attr?
+
+class PlanetConfig(Config):
+  def __init__(self):
+    Config.__init__(self)
+    self.belief_size = 200
+    self.state_size = 30
+    self.embedding_size = 1024
+    self.hidden_size = 200
+    self.overshooting_distance = 50
+    self.overshooting_kl_beta = 0
+    self.overshooting_reward_scale = 0
+    self.free_nats = 3
+    self.planning_horizon = 12
+    self.optimisation_iters = 10
+
+class PPOConfig(Config):
+  def __init__(self):
+    Config.__init__(self)
+    self.model_type = "mlp"
