@@ -7,12 +7,11 @@ from tqdm import tqdm
 from torch import optim
 from dependencies.PlaNet import memory
 from mj_envs_vision.algos.baselines import Planet
-from mj_envs_vision.algos.baselines import PlanetConfig
-from mj_envs_vision.algos.baselines import PlanetMetrics
 from mj_envs_vision.utils.wrappers import make_env
 from mj_envs_vision.utils.helpers import visualise_batch_from_experience
 from mj_envs_vision.utils.helpers import visualise_trajectory
 from mj_envs_vision.utils.helpers import plot_rewards
+from mj_envs_vision.utils.config import PlanetConfig
 
 
 PROF = True
@@ -41,7 +40,7 @@ def evaluate(config, policy, count=10):
       policy.initialise(**dict(count=1))
       for t in tqdm(range(config.max_episode_length // config.action_repeat)):
         action = policy.act(obs).squeeze(dim=0).cpu()
-        next_obs, r, done = E.step(action)
+        next_obs, r, done = T.step(action)
         traj.append((obs.squeeze(dim=0), action, r))
         rwd += r
         obs = next_obs
@@ -54,8 +53,60 @@ def evaluate(config, policy, count=10):
 
     return total_rwds, trajectories
 
+def save_rewards_fig(rewards, path: str):
+  fig = plot_rewards(rewards)
+  fig.savefig(path)
 
-def train_policy(config, E, policy, optimiser):
+def train_sb3_policy(config, E, policy, out_dir):
+  train_time = list()
+  eval_time = list()
+  exp_rewards = list()
+  episode_rewards = list()
+  episode_trajectories = list()
+  # initialise experience replay buffer
+  experience = memory.ExperienceReplay(config.experience_size,
+                                       config.state_type == "vector",
+                                       E.observation_size,
+                                       E.action_size,
+                                       config.bit_depth,
+                                       config.device)
+
+  # populate buffer with requested batch and chunk size
+  rwd, done = 0.0, False
+  obs = E.reset()
+
+  for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)):
+    if PROF: tns = time.time_ns()
+    # # TODO: pack/unpack data
+    policy.update(sample_batch=[], optimiser=None)
+    exp_rewards.append((ep, policy.metrics.total_return))
+    if PROF: train_time.append(time.time_ns() - tns)
+
+    if ep % config.test_interval == 0:
+      if PROF: tns = time.time_ns()
+      policy.set_models_to_eval()
+      rewards, trajs = evaluate(config, policy, count=10)
+      policy.set_models_to_train()
+      if PROF: eval_time.append(time.time_ns() - tns)
+
+      episode_rewards.append((ep, rewards))
+      episode_trajectories.append((ep, trajs))
+      if config.state_type == "observation":
+        visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
+
+      # TODO: dump metrics to tensorboard
+      #save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_rewards.png"))
+      save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
+
+  if PROF:
+    train_time, eval_time = [t / 1e9 for t in train_time], [t / 1e9 for t in eval_time]
+    print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s")
+    print(f"total time:\n\t1.00x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr")
+
+  return exp_rewards, episode_rewards, episode_trajectories
+
+
+def train_policy(config, E, policy, optimiser, out_dir):
   train_time = list()
   eval_time = list()
   sim_time = list()
@@ -96,22 +147,24 @@ def train_policy(config, E, policy, optimiser):
 
     if ep % config.test_interval == 0:
       if PROF: tns = time.time_ns()
-      for m in policy.models.values(): m.eval()
+      policy.set_models_to_eval()
       rewards, trajs = evaluate(config, policy, count=10)
-      for m in policy.models.values(): m.train()
+      policy.set_models_to_train()
       if PROF: eval_time.append(time.time_ns() - tns)
 
       episode_rewards.append((ep, rewards))
       episode_trajectories.append((ep, trajs))
+      if config.state_type == "observation":
+        visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
+
       # TODO: dump metrics to tensorboard
-      visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
-      # TODO: rm
-      #plot_rewards(exp_rewards).savefig(os.path.join(out_dir, "train_rewards.png"))
-      #plot_rewards(episode_rewards).savefig(os.path.join(out_dir, "eval_rewards.png"))
+      save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_rewards.png"))
+      save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
 
   # TODO: rm
-  for i in range(5):
-    visualise_batch_from_experience(i, config, experience, E.observation_size, out_dir)
+  if config.state_type == "observation":
+    for i in range(5):
+      visualise_batch_from_experience(i, config, experience, E.observation_size, out_dir)
 
   if PROF:
     train_time, eval_time, sim_time = [t / 1e9 for t in train_time], [t / 1e9 for t in eval_time], [t / 1e9 for t in sim_time]
@@ -139,14 +192,12 @@ def collect_experience(config, E, experience, policy):
 
 
 if __name__ == "__main__":
-  # TODO [PENDING]: sanity check
-  #       compare metrics of this training loop with those of PlaNet/main.py
   import sys
 
   # load user defined parameters
   config = PlanetConfig()
   if len(sys.argv) == 1:
-    config.load("mj_envs_vision/utils/test_config.json")
+    config.load("mj_envs_vision/utils/mini_config.json")
   else:
     config.load(sys.argv[1])
   print(config.str())
@@ -174,10 +225,8 @@ if __name__ == "__main__":
     policy.load_models(config.models_path)
   optimiser = optim.Adam(policy.params_list, lr=config.learning_rate, eps=config.adam_epsilon)
   # train policy on target environment
-  exp_rewards, episode_rewards, episode_trajectories = train_policy(config, E, policy, optimiser)
+  exp_rewards, episode_rewards, episode_trajectories = train_policy(config, E, policy, optimiser, out_dir)
   E.close()
-
-  # save performance metrics (TODO: pickle)
 
   # visualise performance
   plot_rewards(exp_rewards).savefig(os.path.join(out_dir, "train_rewards.png"))

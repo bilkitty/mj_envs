@@ -1,37 +1,84 @@
 import torch
-import numpy as np
 from typing import List
 from torch import nn
+from torch.nn.parameter import Parameter
 from torch.nn import functional as F
 from torch.distributions import Normal
 from torch.distributions import kl_divergence
-from dependencies.PlaNet import env
+from stable_baselines3.ppo import PPO
+from stable_baselines3.common.policies import ActorCriticPolicy
+from stable_baselines3.common.policies import ActorCriticCnnPolicy
 from dependencies.PlaNet import models
 from dependencies.PlaNet.planner import MPCPlanner
 
 # TODO: replace these with own generic implementation
-from dependencies.PlaNet import memory
-from dependencies.PlaNet import planner
-from mj_envs_vision.utils.config import Config
 from mj_envs_vision.utils.helpers import Metrics
 from mj_envs_vision.utils.helpers import expand, flatten_sample
+from mj_envs_vision.utils.wrappers import EnvWrapper
+from mj_envs_vision.utils.config import Config, PPOConfig, PlanetConfig
 
 
+SUPPORTED_POLICIES = ["planet", "ppo"]
 
 
-class PlanetConfig(Config):
-  def __init__(self):
-    Config.__init__(self)
-    self.belief_size = 200
-    self.state_size = 30
-    self.embedding_size = 1024
-    self.hidden_size = 200
-    self.overshooting_distance = 50
-    self.overshooting_kl_beta = 0
-    self.overshooting_reward_scale = 0
-    self.free_nats = 3
-    self.planning_horizon = 12
-    self.optimisation_iters = 10
+def make_baseline_policy(config: Config, policy_type: str, env: EnvWrapper):
+  assert policy_type in SUPPORTED_POLICIES, f"Unsupported policy type '{policy_type}'"
+  if policy_type == "ppo": # TODO: explicitly cast config
+    return PPOBaseline(config, env.action_space, env.observation_space)
+  elif policy_type == "planet":
+    return Planet(config, env.action_size, env.observation_size, env.action_space)
+
+
+class PPOBaseline:
+  def __init__(self, config, action_space, observation_space):
+    self.ppo = None
+    self.env_name = config.env_name
+    self.learning_rate = config.learning_rate
+    self.n_steps = config.sample_iters
+    self.epochs = config.max_episodes
+    self.batch_size = config.batch_size
+    self.target_kl = None
+    self.metrics = Metrics()
+
+    if config.model_type == "mlp":
+      policy_type = ActorCriticPolicy#(observation_space, action_space, lr_schedule=lambda x: 0.0)
+    elif config.model_type == "cnn":
+      policy_type = ActorCriticCnnPolicy#(observation_space, action_space, lr_schedule=lambda x: 0.0)
+    else:
+      raise Exception(f"unsupported model type {config.model_type}")
+
+    self.ppo = PPO(policy_type,
+              self.env_name,
+              self.learning_rate,
+              n_steps=self.n_steps,
+              n_epochs=self.epochs,
+              batch_size=self.batch_size,
+              target_kl=self.target_kl)
+
+    named_model_parameters = self.ppo.get_parameters()["policy"]
+    self.params_list = [Parameter(v) for k,v in named_model_parameters.items()]
+
+  def initialise(self, *args, **kwargs):
+    """ re-initialise generic policy """
+    pass
+
+  def set_models_to_eval(self):
+    pass
+
+  def set_models_to_train(self):
+    pass
+
+  def update(self, sample_batch: List, optimiser):
+    self.ppo.learn(self.n_steps, log_interval=10, progress_bar=True)
+    self.metrics.total_return = 0.0
+
+  def act(self, obs):
+    action, state = self.ppo.predict(obs)
+    return torch.FloatTensor(action)
+
+  def sample_action(self, obs):
+    a = self.act(obs)
+    return a + 0.3 * torch.rand_like(a)
 
 
 class PlanetMetrics(Metrics):
@@ -93,6 +140,12 @@ class Planet:
   def load_models(self, models_path: str):
     pass
 
+  def set_models_to_eval(self):
+    for m in self.models.values(): m.eval()
+
+  def set_models_to_train(self):
+    for m in self.models.values(): m.train()
+
   def update(self, sample_batch: List, optimiser):
     assert len(sample_batch) == 4 # TODO: pack/unpack data
     obs, actions, rewards, not_done = sample_batch
@@ -126,6 +179,7 @@ class Planet:
 
 
   def initialise(self, *args, **kwargs):
+    """ re-initialise generic policy """
     count = kwargs["count"] if "count" in list(kwargs.keys()) else self.batch_size
     self.b = torch.zeros(count, self.belief_size, device=self.device) # TODO: does this init matter?
     self.x = torch.zeros(count, self.state_size, device=self.device)
