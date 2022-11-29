@@ -1,62 +1,71 @@
+import numpy
 import torch
-from mjrl.utils import gym_env
-from dependencies.PlaNet import env
-from gym.wrappers.time_limit import TimeLimit
+from gym import spaces
+from gym import ObservationWrapper
+from gym.wrappers.pixel_observation import PixelObservationWrapper
+from gym.wrappers.step_api_compatibility import StepAPICompatibility
 
-
-class EnvWrapper:
-  def __init__(self, env, is_adroit):
-    self.env = env
-    self.is_adroit = is_adroit
-
-  @property
-  def action_space(self):
-    return self.env.action_space if self.is_adroit else self.env._env.action_space
-
-  @property
-  def observation_space(self):
-    return self.env.observation_space if self.is_adroit else self.env._env.observation_space
-
-  @property
-  def action_size(self):
-    return self.env.action_dim if self.is_adroit else self.env.action_size
-
-  @property
-  def observation_size(self):
-    return self.env.observation_dim if self.is_adroit else self.env.observation_size
+class CustomObservationWrapper(ObservationWrapper):
+  def __init__(self, env, action_repeat=1):
+    env = StepAPICompatibility(env, output_truncation_bool=True) # convert any envs from old ot new api
+    super().__init__(env)
+    self.action_repeat = action_repeat
+    self.max_episode_length = 200 # TODO: dont hard code
+    self.timer = 0
 
   def reset(self):
-    return self.env.reset()
+    self.timer = 0
+    return super().reset()
 
   def step(self, action):
-    obs, reward, done = self.env.step(action)[:3]
-    return obs, reward, done
+    # execute multiple repeats of action
+    items = super().step(action)
+    obs = items[0]
+    self.timer += 1
+    for i in range(self.action_repeat - 1):
+      i_items = super().step(action)
+      if items[2] == True or i_items[2] == True or self.timer > self.max_episode_length: # check done flag
+        break
+      self.timer += 1
+      obs = i_items[0] # update obs
+      items[1] += i_items[1] # accumulate rewards
 
-  def close(self):
-    self.env.close()
+    return obs, *items[1:]
 
-  def sample_action(self):
-    if self.is_adroit:
-      return torch.FloatTensor(self.env.action_space.sample())
-    else:
-      return torch.FloatTensor(self.env._env.action_space.sample())
+class CustomPixelObservationWrapper(PixelObservationWrapper):
+  def __init__(self, env, pixels_only=True, render_kwargs=None, action_repeat=1):
+    env = StepAPICompatibility(env, output_truncation_bool=True) # convert any envs from old ot new api
+    super().__init__(env, pixels_only, render_kwargs)
+    self.action_repeat = action_repeat
+    self.max_episode_length = 200 # TODO: dont hard code
+    self.timer = 0
 
+    # use pil image format
+    test_obs = super().reset()[0]['pixels']
+    space = super().observation_space['pixels']
+    lo = int(space.low_repr) if space.dtype == numpy.integer else 0
+    hi = int(space.high_repr) if space.dtype == numpy.integer else 1
+    self.observation_space = spaces.Box(
+      shape=test_obs.shape, low=lo, high=hi, dtype=space.dtype
+    )
 
-def make_env(config):
-  if config.env_name in ['door-v0', 'pen-v0', 'hammer-v0', 'relocate-v0']:
-    e = gym_env.GymEnv(config.env_name)
-    e.set_seed(config.seed)
-    if isinstance(e.env, TimeLimit):
-      e = e.env.env
-    return EnvWrapper(e, is_adroit=True)
-  else:
-    assert config.env_name in env.GYM_ENVS
-    e = env.GymEnv(config.env_name,
-                      config.state_type == "vector",
-                      config.seed,
-                      config.max_episode_length,
-                      config.action_repeat,
-                      config.bit_depth)
-    if isinstance(e._env, TimeLimit):
-      e._env = e._env.env
-    return EnvWrapper(e, is_adroit=False)
+  def reset(self):
+    # call base class to get pixels
+    self.timer = 0
+    items = super().reset()
+    return torch.FloatTensor(items[0]['pixels'].copy()), *items[1:]
+
+  def step(self, action):
+    # call base class to get pixels & execute multiple repeats of action
+    items = super().step(action)
+    obs = items[0]
+    self.timer += 1
+    for i in range(self.action_repeat - 1):
+      i_items = super().step(action)
+      if items[2] == True or i_items[2] == True or self.timer > self.max_episode_length: # check done flag
+        break
+      self.timer += 1
+      obs = i_items[0] # update obs
+      items[1] += i_items[1] # accumulate rewards
+
+    return torch.FloatTensor(obs['pixels'].copy()), *items[1:]
