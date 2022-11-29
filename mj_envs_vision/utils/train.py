@@ -6,6 +6,7 @@ import numpy as np
 from tqdm import tqdm
 from torch import optim
 from dependencies.PlaNet import memory
+from dependencies.PlaNet.env import _images_to_observation
 from mj_envs_vision.algos.baselines import Planet
 from mj_envs_vision.utils.wrappers import make_env
 from mj_envs_vision.utils.helpers import visualise_batch_from_experience
@@ -36,10 +37,10 @@ def evaluate(config, policy, count=10):
       rwd = 0.0
       traj = []
       T = make_env(config)
-      obs = T.reset()
+      obs, _ = T.reset()
       policy.initialise(**dict(count=1))
       for t in tqdm(range(config.max_episode_length // config.action_repeat)):
-        action = policy.act(obs).squeeze(dim=0).cpu()
+        action = policy.act(obs.squeeze(dim=0)).squeeze(dim=0).cpu()
         next_obs, r, done = T.step(action)
         traj.append((obs.squeeze(dim=0), action, r))
         rwd += r
@@ -73,7 +74,7 @@ def train_sb3_policy(config, E, policy, out_dir):
 
   # populate buffer with requested batch and chunk size
   rwd, done = 0.0, False
-  obs = E.reset()
+  obs, _ = E.reset()
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)):
     if PROF: tns = time.time_ns()
@@ -120,19 +121,28 @@ def train_policy(config, E, policy, optimiser, out_dir):
                                        E.action_size,
                                        config.bit_depth,
                                        config.device)
+  # TODO: tmp hack to override hard coded image shape
+  dtype = np.float32 if config.state_type == "vector" else np.uint8
+  pil_format_shape = (E.observation_space.shape[2], *E.observation_space.shape[:2])
+  experience.observations = np.empty((config.experience_size, *pil_format_shape), dtype)
+  # assume models take inputs with channels at first dimension (i.e., CxHxW)
+  transform_to_pil_like = lambda x: x.permute((2, 0, 1)) if E.is_adroit else _images_to_observation(x.numpy(), bit_depth=5)
 
   # populate buffer with requested batch and chunk size
   rwd, done = 0.0, False
-  obs = E.reset()
+  obs, _ = E.reset()
+  obs = transform_to_pil_like(obs)
   print(f"Initialising experience replay with max(batch_size, chunk_size) samples")
   while experience.idx <= max(config.batch_size, config.chunk_size):
     if done:
       rwd, done = 0.0, False
-      obs = E.reset()
+      obs, _ = E.reset()
+      obs = transform_to_pil_like(obs)
 
     action = E.sample_action()
-    experience.append(obs, action, rwd, done)
+    experience.append(obs, torch.FloatTensor(action), rwd, done)
     obs, rwd, done = E.step(action)
+    obs = transform_to_pil_like(obs)
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
     if PROF: tns = time.time_ns()
@@ -164,7 +174,7 @@ def train_policy(config, E, policy, optimiser, out_dir):
   # TODO: rm
   if config.state_type == "observation":
     for i in range(5):
-      visualise_batch_from_experience(i, config, experience, E.observation_size, out_dir)
+      visualise_batch_from_experience(i, config, experience, out_dir)
 
   if PROF:
     train_time, eval_time, sim_time = [t / 1e9 for t in train_time], [t / 1e9 for t in eval_time], [t / 1e9 for t in sim_time]
@@ -175,15 +185,17 @@ def train_policy(config, E, policy, optimiser, out_dir):
 
 
 def collect_experience(config, E, experience, policy):
+  # assume models take inputs with channels at first dimension (i.e., CxHxW)
+  transform_to_pil_like = lambda x: x.permute((2, 0, 1)) if E.is_adroit else _images_to_observation(x.numpy(), bit_depth=5)
   with torch.no_grad():
     total_rwd = 0.0
-    obs = E.reset()
+    obs, _ = E.reset()
     policy.initialise(**dict(count=1))
     # roll out policy and update experience
     for t in tqdm(range(config.max_episode_length // config.action_repeat)):
       action = policy.sample_action(obs).squeeze(dim=0).cpu()
       next_obs, rwd, done = E.step(action)
-      experience.append(obs, action, rwd, done)
+      experience.append(transform_to_pil_like(obs), action, rwd, done)
       total_rwd += rwd
       obs = next_obs
       #if done: break # less time, but not good idea

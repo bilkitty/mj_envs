@@ -29,19 +29,21 @@ class HeadlessObserver(utils.EzPickle):
         self.set_view('default')
 
 
-    def render(self, *args, **kwargs):
+    def render(self, *args, **kwargs) -> np.ndarray:
+        """ Returns a normalised and center cropped image """
         # /opt/anaconda3/envs/planet-mjenv/lib/python3.9/site-packages/mujoco_py/mjviewer.py
         should_resize = 'enable_resize' in args[1].keys() and args[1]['enable_resize']
         image = self.sim.render(640, 480)
         if image is None:
             return np.random.randint((64, 64, 3)) if should_resize else np.random.randint((128, 128, 3))
-        image = image[::-1, :, :] # rendered images are upside-down
-        image = image.transpose(2, 0, 1).copy()  # put channel first
-        image = self._center_crop(torch.tensor(image, dtype=torch.float32))     # crop
+        # mimic zoom by center cropping image
+        image = torch.FloatTensor(image[::-1, :, :].copy()) # rendered images are upside-down
+        pil_like_image = image.permute((2, 0, 1))
+        pil_like_image = self._center_crop(pil_like_image)
+        image = pil_like_image.permute((1, 2, 0))
         if should_resize:
             image = self._resize(image)
-        # TODO: fix these transforms
-        return image / 255  # normalise + batch dimension
+        return image.numpy().astype('float') / 255
 
 
     def contact_type(self, contact_type: str):
