@@ -12,15 +12,19 @@ DEFAULT_DT = 0.1
 
 
 class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
-    def __init__(self):
+    def __init__(self, render_mode, width=64, height=64):
         self.door_hinge_did = 0
         self.door_bid = 0
         self.grasp_sid = 0
         self.handle_sid = 0
+        self.observer = None # required for headless setup
         curr_dir = os.path.dirname(os.path.abspath(__file__))
         mujoco_env.MujocoEnv.__init__(self, curr_dir+'/assets/DAPG_door.xml', frame_skip=DEFAULT_FRAME_SKIP)
         # override rendering settings ---- but can't atm...
         self.metadata['video.frames_per_second'] = int(np.round(1.0 / DEFAULT_DT))
+        self.render_mode = render_mode
+        self.width = width
+        self.height = height
 
         # change actuator sensitivity
         self.sim.model.actuator_gainprm[self.sim.model.actuator_name2id('A_WRJ1'):self.sim.model.actuator_name2id('A_WRJ0')+1,:3] = np.array([10, 0, 0])
@@ -95,12 +99,12 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         qp = self.init_qpos.copy()
         qv = self.init_qvel.copy()
         self.set_state(qp, qv)
-
         self.model.body_pos[self.door_bid,0] = self.np_random.uniform(low=-0.3, high=-0.2)
         self.model.body_pos[self.door_bid,1] = self.np_random.uniform(low=0.25, high=0.35)
         self.model.body_pos[self.door_bid,2] = self.np_random.uniform(low=0.252, high=0.35)
         self.sim.forward()
-        return self.get_obs()
+        self.mj_viewer_headless_setup()
+        return self.get_obs(), {}
 
     def get_env_state(self):
         """
@@ -128,7 +132,8 @@ class DoorEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.viewer.cam.distance = 1.5
 
     def mj_viewer_headless_setup(self):
-        self.observer.mj_viewer_headless_setup()
+        if self.observer is not None:
+            self.observer.mj_viewer_headless_setup()
 
     def evaluate_success(self, paths):
         num_success = 0

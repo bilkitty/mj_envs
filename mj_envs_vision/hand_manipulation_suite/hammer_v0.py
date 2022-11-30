@@ -9,14 +9,18 @@ import os
 ADD_BONUS_REWARDS = True
 
 class HammerEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
-    def __init__(self):
+    def __init__(self, render_mode, width=64, height=64):
         self.target_obj_sid = -1
         self.S_grasp_sid = -1
         self.obj_bid = -1
         self.tool_sid = -1
         self.goal_sid = -1
+        self.observer = None # required for headless setup
         curr_dir = os.path.dirname(os.path.abspath(__file__))
         mujoco_env.MujocoEnv.__init__(self, curr_dir+'/assets/DAPG_hammer.xml', 5)
+        self.render_mode = render_mode
+        self.width = width
+        self.height = height
         utils.EzPickle.__init__(self)
 
         # change actuator sensitivity
@@ -95,7 +99,8 @@ class HammerEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         target_bid = self.model.body_name2id('nail_board')
         self.model.body_pos[target_bid,2] = self.np_random.uniform(low=0.1, high=0.25)
         self.sim.forward()
-        return self.get_obs()
+        self.mj_viewer_headless_setup()
+        return self.get_obs(), {}
 
     def get_env_state(self):
         """
@@ -125,7 +130,8 @@ class HammerEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.sim.forward()
 
     def mj_viewer_headless_setup(self):
-        self.observer.mj_viewer_headless_setup()
+        if self.observer is not None:
+            self.observer.mj_viewer_headless_setup()
 
     def evaluate_success(self, paths):
         num_success = 0

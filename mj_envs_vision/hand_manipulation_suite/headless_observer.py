@@ -1,5 +1,6 @@
 import numpy as np
 from gym import utils
+import cv2
 import torch
 import torchvision
 from mujoco_py import MjRenderContextOffscreen
@@ -17,7 +18,7 @@ class HeadlessObserver(utils.EzPickle):
 
 
     def mj_viewer_headless_setup(self):
-        # configure simulation cam
+        # configure simulation cam (instantiates camera)
         self.sim.render(64, 64)
         self.sim.forward()
 
@@ -30,7 +31,7 @@ class HeadlessObserver(utils.EzPickle):
 
 
     def render(self, *args, **kwargs) -> np.ndarray:
-        """ Returns a normalised and center cropped image """
+        """ Returns an unnormalised and center cropped image """
         # /opt/anaconda3/envs/planet-mjenv/lib/python3.9/site-packages/mujoco_py/mjviewer.py
         should_resize = 'enable_resize' in args[1].keys() and args[1]['enable_resize']
         image = self.sim.render(640, 480)
@@ -43,7 +44,11 @@ class HeadlessObserver(utils.EzPickle):
         image = pil_like_image.permute((1, 2, 0))
         if should_resize:
             image = self._resize(image)
-        return image.numpy().astype('float') / 255
+
+        # debug view
+        #cv2.imshow("test", image.numpy().astype('uint8'))
+        #cv2.waitKey(1)
+        return image.numpy().astype('float') #/ 255
 
 
     def contact_type(self, contact_type: str):

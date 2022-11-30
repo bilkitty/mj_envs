@@ -8,12 +8,16 @@ import os
 ADD_BONUS_REWARDS = True
 
 class RelocateEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
-    def __init__(self):
+    def __init__(self, render_mode, width=64, height=64):
         self.target_obj_sid = 0
         self.S_grasp_sid = 0
         self.obj_bid = 0
+        self.observer = None # required for headless setup
         curr_dir = os.path.dirname(os.path.abspath(__file__))
         mujoco_env.MujocoEnv.__init__(self, curr_dir+'/assets/DAPG_relocate.xml', 5)
+        self.render_mode = render_mode
+        self.width = width
+        self.height = height
         
         # change actuator sensitivity
         self.sim.model.actuator_gainprm[self.sim.model.actuator_name2id('A_WRJ1'):self.sim.model.actuator_name2id('A_WRJ0')+1,:3] = np.array([10, 0, 0])
@@ -82,7 +86,8 @@ class RelocateEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.model.site_pos[self.target_obj_sid,1] = self.np_random.uniform(low=-0.2, high=0.2)
         self.model.site_pos[self.target_obj_sid,2] = self.np_random.uniform(low=0.15, high=0.35)
         self.sim.forward()
-        return self.get_obs()
+        self.mj_viewer_headless_setup()
+        return self.get_obs(), {}
 
     def get_env_state(self):
         """
@@ -118,7 +123,8 @@ class RelocateEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.sim.forward()
 
     def mj_viewer_headless_setup(self):
-        self.observer.mj_viewer_headless_setup()
+        if self.observer is not None:
+            self.observer.mj_viewer_headless_setup()
 
     def evaluate_success(self, paths):
         num_success = 0

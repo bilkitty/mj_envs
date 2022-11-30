@@ -9,7 +9,7 @@ import os
 ADD_BONUS_REWARDS = True
 
 class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
-    def __init__(self):
+    def __init__(self, render_mode, width=64, height=64):
         self.target_obj_bid = 0
         self.S_grasp_sid = 0
         self.eps_ball_sid = 0
@@ -21,9 +21,13 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.pen_length = 1.0
         self.tar_length = 1.0
         self.use_aerial_view = False
+        self.observer = None # required for headless setup
 
         curr_dir = os.path.dirname(os.path.abspath(__file__))
         mujoco_env.MujocoEnv.__init__(self, curr_dir+'/assets/DAPG_pen.xml', 5)
+        self.render_mode = render_mode
+        self.width = width
+        self.height = height
 
         # change actuator sensitivity
         self.sim.model.actuator_gainprm[self.sim.model.actuator_name2id('A_WRJ1'):self.sim.model.actuator_name2id('A_WRJ0')+1,:3] = np.array([10, 0, 0])
@@ -111,7 +115,8 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         desired_orien[1] = self.np_random.uniform(low=-1, high=1)
         self.model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
         self.sim.forward()
-        return self.get_obs()
+        self.mj_viewer_headless_setup()
+        return self.get_obs(), {}
 
     def get_env_state(self):
         """
@@ -140,7 +145,8 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.viewer.cam.distance = 1.0
 
     def mj_viewer_headless_setup(self):
-        self.observer.mj_viewer_headless_setup()
+        if self.observer is not None:
+            self.observer.mj_viewer_headless_setup()
 
     def mj_viewer_headless_setup(self):
         # configure simulation cam
