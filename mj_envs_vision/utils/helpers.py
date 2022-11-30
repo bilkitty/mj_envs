@@ -3,13 +3,54 @@ import numpy as np
 from PIL import Image
 from typing import List, Tuple
 from matplotlib import pyplot as plt
-
+from gym import make as gym_make
+from gym.wrappers.time_limit import TimeLimit
+from dependencies.PlaNet.env import GYM_ENVS
+from mj_envs_vision.utils.wrappers import CustomObservationWrapper
+from mj_envs_vision.utils.wrappers import CustomPixelObservationWrapper
 
 
 class Metrics:
   def __init__(self):
     self.total_return = list()
 
+
+# Helpers for gym envs
+def is_from_adroit_suite(env_str: str):
+  return isinstance(env_str, str) and env_str in ['door-v0', 'pen-v0', 'hammer-v0', 'relocate-v0']
+
+def is_from_continuous_control_gym_suite(env_str: str):
+  return isinstance(env_str, str) and env_str in GYM_ENVS
+
+def is_valid_env(env_str: str):
+  return is_from_continuous_control_gym_suite(env_str) or is_from_adroit_suite(env_str)
+
+def action_size(env):
+  return env.action_space.shape[0]
+
+def observation_size(env):
+  # aka, input channel size
+  return env.observation_space.shape[-1]
+
+def reset(env):
+  return env.reset()
+
+def step(env, action):
+  obs, reward, done = env.step(action)[:3]
+  return obs, reward, done
+
+def make_env(config):
+    assert is_valid_env(config.env_name)
+    e = gym_make(config.env_name, render_mode='rgb_array', width=64, height=64)
+    #e.seed(config.seed)
+    if isinstance(e, TimeLimit):
+      e = e.env
+    if config.state_type == "vector":
+      return CustomObservationWrapper(e)
+    elif config.state_type == "observation":
+      return CustomPixelObservationWrapper(e)
+    else:
+      raise Exception(f"Unsupported state type '{config.state_type}'")
 
 # Helpers for processing samples drawn from experience
 def flatten_sample(x):
@@ -55,9 +96,11 @@ def plot_rewards(rewards: List[Tuple]):
 # primarily for debugging
 #
 
-def visualise_batch_from_experience(id, config, experience, observation_size, out_dir):
+def visualise_batch_from_experience(id, config, experience, out_dir):
   batch = experience.sample(min(config.batch_size, experience.idx - 1), min(config.chunk_size, experience.idx - 1))
-  save_as_gif(batch[0].reshape(-1, *observation_size).cpu().numpy(), os.path.join(out_dir, f'experience_{id}.gif'))
+  x = experience.observations.shape[1:]
+  save_as_gif(batch[0].reshape(-1, *experience.observations.shape[1:]).cpu().numpy(), os.path.join(out_dir, f'experience_{id}.gif'))
 
 def visualise_trajectory(id, trajectory: List, out_dir):
-  save_as_gif([x[0].cpu().numpy() for x in trajectory], os.path.join(out_dir, f'trajectory_{id}.gif'))
+  # TODO: fix color (shift? unnormalise?)
+  save_as_gif([x[0].cpu().numpy().transpose((2, 0, 1)) for x in trajectory], os.path.join(out_dir, f'trajectory_{id}.gif'))

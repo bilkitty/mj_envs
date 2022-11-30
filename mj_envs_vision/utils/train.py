@@ -8,10 +8,11 @@ from torch import optim
 from dependencies.PlaNet import memory
 from dependencies.PlaNet.env import _images_to_observation
 from mj_envs_vision.algos.baselines import Planet
-from mj_envs_vision.utils.wrappers import make_env
 from mj_envs_vision.utils.helpers import visualise_batch_from_experience
 from mj_envs_vision.utils.helpers import visualise_trajectory
 from mj_envs_vision.utils.helpers import plot_rewards
+from mj_envs_vision.utils.helpers import make_env, is_from_adroit_suite
+from mj_envs_vision.utils.helpers import reset, step, observation_size, action_size
 from mj_envs_vision.utils.config import PlanetConfig
 
 
@@ -22,9 +23,7 @@ def train(config, experience, policy, optimiser):
   for t in range(config.sample_iters):
     # sample data iid
     obs, actions, rewards, not_done = experience.sample(config.batch_size, config.chunk_size)
-    # # TODO: pack/unpack data
     policy.update(sample_batch=[obs, actions, rewards, not_done], optimiser=optimiser)
-
   return policy.metrics
 
 
@@ -37,11 +36,11 @@ def evaluate(config, policy, count=10):
       rwd = 0.0
       traj = []
       T = make_env(config)
-      obs, _ = T.reset()
+      obs, _ = reset(T)
       policy.initialise(**dict(count=1))
       for t in tqdm(range(config.max_episode_length // config.action_repeat)):
         action = policy.act(obs.squeeze(dim=0)).squeeze(dim=0).cpu()
-        next_obs, r, done = T.step(action)
+        next_obs, r, done = step(T, action)
         traj.append((obs.squeeze(dim=0), action, r))
         rwd += r
         obs = next_obs
@@ -67,18 +66,17 @@ def train_sb3_policy(config, E, policy, out_dir):
   # initialise experience replay buffer
   experience = memory.ExperienceReplay(config.experience_size,
                                        config.state_type == "vector",
-                                       E.observation_size,
-                                       E.action_size,
+                                       observation_size(E),
+                                       action_size(E),
                                        config.bit_depth,
                                        config.device)
 
   # populate buffer with requested batch and chunk size
   rwd, done = 0.0, False
-  obs, _ = E.reset()
+  obs, _ = reset(E)
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)):
     if PROF: tns = time.time_ns()
-    # # TODO: pack/unpack data
     policy.update(sample_batch=[], optimiser=None)
     exp_rewards.append((ep, policy.metrics.total_return))
     if PROF: train_time.append(time.time_ns() - tns)
@@ -108,41 +106,34 @@ def train_sb3_policy(config, E, policy, out_dir):
 
 
 def train_policy(config, E, policy, optimiser, out_dir):
+  # NOTE: all policies are responsible for preprocessing obs into input data
   train_time = list()
   eval_time = list()
   sim_time = list()
   exp_rewards = list()
   episode_rewards = list()
   episode_trajectories = list()
+  # TODO: replace with simpler buffer (no discretisation)
   # initialise experience replay buffer
   experience = memory.ExperienceReplay(config.experience_size,
                                        config.state_type == "vector",
-                                       E.observation_size,
-                                       E.action_size,
+                                       observation_size(E),
+                                       action_size(E),
                                        config.bit_depth,
                                        config.device)
-  # TODO: tmp hack to override hard coded image shape
-  dtype = np.float32 if config.state_type == "vector" else np.uint8
-  pil_format_shape = (E.observation_space.shape[2], *E.observation_space.shape[:2])
-  experience.observations = np.empty((config.experience_size, *pil_format_shape), dtype)
-  # assume models take inputs with channels at first dimension (i.e., CxHxW)
-  transform_to_pil_like = lambda x: x.permute((2, 0, 1)) if E.is_adroit else _images_to_observation(x.numpy(), bit_depth=5)
 
   # populate buffer with requested batch and chunk size
   rwd, done = 0.0, False
-  obs, _ = E.reset()
-  obs = transform_to_pil_like(obs)
+  obs, _ = reset(E)
   print(f"Initialising experience replay with max(batch_size, chunk_size) samples")
   while experience.idx <= max(config.batch_size, config.chunk_size):
     if done:
       rwd, done = 0.0, False
-      obs, _ = E.reset()
-      obs = transform_to_pil_like(obs)
+      obs, _ = reset(E)
 
-    action = E.sample_action()
-    experience.append(obs, torch.FloatTensor(action), rwd, done)
-    obs, rwd, done = E.step(action)
-    obs = transform_to_pil_like(obs)
+    action = E.action_space.sample()
+    experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), torch.FloatTensor(action), rwd, done)
+    obs, rwd, done = step(E, action)
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
     if PROF: tns = time.time_ns()
@@ -185,17 +176,15 @@ def train_policy(config, E, policy, optimiser, out_dir):
 
 
 def collect_experience(config, E, experience, policy):
-  # assume models take inputs with channels at first dimension (i.e., CxHxW)
-  transform_to_pil_like = lambda x: x.permute((2, 0, 1)) if E.is_adroit else _images_to_observation(x.numpy(), bit_depth=5)
   with torch.no_grad():
     total_rwd = 0.0
-    obs, _ = E.reset()
+    obs, _ = reset(E)
     policy.initialise(**dict(count=1))
     # roll out policy and update experience
     for t in tqdm(range(config.max_episode_length // config.action_repeat)):
       action = policy.sample_action(obs).squeeze(dim=0).cpu()
-      next_obs, rwd, done = E.step(action)
-      experience.append(transform_to_pil_like(obs), action, rwd, done)
+      next_obs, rwd, done = step(E, action)
+      experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
       total_rwd += rwd
       obs = next_obs
       #if done: break # less time, but not good idea
@@ -232,7 +221,7 @@ if __name__ == "__main__":
   # TODO: create worker setup and parallelise
   # instantiate env, policy, optimiser
   E = make_env(config)
-  policy = Planet(config, E.action_size, E.observation_size, E.action_space)
+  policy = Planet(config, action_size(E), observation_size(E), action_size(E))
   if config.models_path != "":
     policy.load_models(config.models_path)
   optimiser = optim.Adam(policy.params_list, lr=config.learning_rate, eps=config.adam_epsilon)

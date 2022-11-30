@@ -9,7 +9,7 @@ from mj_envs_vision.utils.config import PlanetConfig
 from mj_envs_vision.utils.train import train_policy
 from mj_envs_vision.utils.train import train_sb3_policy
 from mj_envs_vision.utils.helpers import plot_rewards
-from mj_envs_vision.utils.wrappers import make_env
+from mj_envs_vision.utils.helpers import make_env
 from mj_envs_vision.algos.baselines import make_baseline_policy
 
 def load_config(config_path, policy_type):
