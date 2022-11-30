@@ -1,5 +1,6 @@
-import torch
+from gym import Env
 from typing import List
+import torch
 from torch import nn
 from torch.nn.parameter import Parameter
 from torch.nn import functional as F
@@ -10,27 +11,28 @@ from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.policies import ActorCriticCnnPolicy
 from dependencies.PlaNet import models
 from dependencies.PlaNet.planner import MPCPlanner
+from dependencies.PlaNet.env import _images_to_observation
 
 # TODO: replace these with own generic implementation
 from mj_envs_vision.utils.helpers import Metrics
 from mj_envs_vision.utils.helpers import expand, flatten_sample
-from mj_envs_vision.utils.wrappers import EnvWrapper
 from mj_envs_vision.utils.config import Config, PPOConfig, PlanetConfig
+from mj_envs_vision.utils.helpers import action_size, observation_size
 
 
 SUPPORTED_POLICIES = ["planet", "ppo"]
 
 
-def make_baseline_policy(config: Config, policy_type: str, env: EnvWrapper):
+def make_baseline_policy(config: Config, policy_type: str, env: Env):
   assert policy_type in SUPPORTED_POLICIES, f"Unsupported policy type '{policy_type}'"
   if policy_type == "ppo": # TODO: explicitly cast config
-    return PPOBaseline(config, env.action_space, env.observation_space)
+    return PPOBaseline(config, env)
   elif policy_type == "planet":
-    return Planet(config, env.action_size, env.observation_size, env.action_space)
+    return Planet(config, action_size(env), observation_size(env), env.action_space)
 
 
 class PPOBaseline:
-  def __init__(self, config, action_space, observation_space):
+  def __init__(self, config, custom_env: Env):
     self.ppo = None
     self.env_name = config.env_name
     self.learning_rate = config.learning_rate
@@ -48,7 +50,7 @@ class PPOBaseline:
       raise Exception(f"unsupported model type {config.model_type}")
 
     self.ppo = PPO(policy_type,
-              self.env_name,
+              custom_env,
               self.learning_rate,
               n_steps=self.n_steps,
               n_epochs=self.epochs,
@@ -72,8 +74,8 @@ class PPOBaseline:
     self.ppo.learn(self.n_steps, log_interval=10, progress_bar=True)
     self.metrics.total_return = 0.0
 
-  def act(self, obs):
-    action, state = self.ppo.predict(obs)
+  def act(self, obs: torch.Tensor):
+    action, state = self.ppo.predict(obs.numpy())
     return torch.FloatTensor(action)
 
   def sample_action(self, obs):
@@ -148,7 +150,7 @@ class Planet:
 
   def update(self, sample_batch: List, optimiser):
     assert len(sample_batch) == 4 # TODO: pack/unpack data
-    obs, actions, rewards, not_done = sample_batch
+    obs, actions, rewards, not_done = sample_batch # replay buffer outputs obs processed via _images_to_observation
 
     z_gt = expand(self.models["encoder"](flatten_sample(obs[1:])), obs[1:].shape) # embeddings of gt next state
     b0 = torch.zeros(self.batch_size, self.belief_size, device=self.device) # TODO: does this init matter?
@@ -187,6 +189,7 @@ class Planet:
 
   def act(self, obs: torch.Tensor):
     # state estimation and fwd prediction
+    obs = _images_to_observation(obs.cpu().numpy(), bit_depth=5)
     z = self.models["encoder"](obs.to(self.device)).unsqueeze(dim=0)
     action = self.a.unsqueeze(dim=0)
     fwd_pred = self.models["transition"](self.x, action, self.b, z)
