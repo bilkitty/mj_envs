@@ -91,13 +91,8 @@ class PlanetMetrics(Metrics):
     self.kl_loss = list()
     self.time = list()
 
-  def current_loss(self):
-    return self.observation_loss[-1] + self.reward_loss[-1] + self.kl_loss[-1]
-
   def total_loss(self):
-    return dict(observation_loss=[v.item() for v in self.observation_loss],
-                reward_loss=[v.item() for v in self.reward_loss],
-                kl_loss=[v.item() for v in self.kl_loss])
+    return dict(observation_loss=self.observation_loss, reward_loss=self.reward_loss, kl_loss=self.kl_loss)
 
 class Planet:
   def __init__(self, config, action_size, observation_size, action_space):
@@ -167,18 +162,22 @@ class Planet:
     nats = torch.full((1,), self.free_nats, dtype=torch.float32, device=self.device)
     mse_rewards = F.mse_loss(r, rewards[:-1], reduction='none')
     mse_pixels = F.mse_loss(o, obs[1:], reduction='none').sum(dim=(2, 3, 4))
-    self.metrics.observation_loss.append(mse_pixels.mean(dim=(0, 1)))
-    self.metrics.reward_loss.append(mse_rewards.mean(dim=(0, 1)))
+    l_pixels = mse_pixels.mean(dim=(0, 1))
+    l_rewards = mse_rewards.mean(dim=(0, 1))
+    l_kl = torch.max(kl_divergence(P, Q).sum(dim=2), nats).mean(dim=(0, 1))
+    L = l_pixels + l_rewards + l_kl
     # TODO: include overshooting
     #state_prior = torch.distributions.Normal(zero_mean, unit_var)
-    self.metrics.kl_loss.append(torch.max(kl_divergence(P, Q).sum(dim=2), nats).mean(dim=(0, 1)))
-    L = self.metrics.current_loss()
     # update models
     optimiser.zero_grad()
     L.backward()
     nn.utils.clip_grad_norm_(self.params_list, self.grad_clip_norm, norm_type=2)
     optimiser.step()
 
+    # report losses (also clear mem)
+    self.metrics.kl_loss.append(l_kl.item())
+    self.metrics.observation_loss.append(l_pixels.item())
+    self.metrics.reward_loss.append(l_rewards.item())
 
   def initialise(self, *args, **kwargs):
     """ re-initialise generic policy """
