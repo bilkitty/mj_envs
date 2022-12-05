@@ -4,12 +4,14 @@
 import json
 
 
-class Config:
+class Config(json.JSONEncoder):
   def __init__(self):
+    super().__init__()
+
     # General parameters
     self.run_id = 0
     self.seed = 0
-    self.device = None
+    self.device_type = 'cpu'
     self.disable_cuda = False
     self.models_path = ""
     # Algorithm parameters
@@ -37,6 +39,9 @@ class Config:
     self.chunk_size = 50
 
     # TODO: select params after planning horizon
+  def default(self, o):
+    # TODO: filter out base class attributes
+    return o.__dict__
 
   def load(self, filepath: str):
     # TODO: use attributes
@@ -56,7 +61,11 @@ class Config:
     fp.close()
 
   def save(self, filepath: str):
-    pass
+    fp = open(filepath, 'w')
+    if "json" in filepath:
+        json.dump(Config().encode(self), fp, indent=2)
+    else:
+      raise Exception("only json configs are supported atm")
 
   def str(self):
     s = "Parameters:\n"

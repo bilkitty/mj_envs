@@ -23,12 +23,12 @@ from mj_envs_vision.utils.helpers import action_size, observation_size
 SUPPORTED_POLICIES = ["planet", "ppo"]
 
 
-def make_baseline_policy(config: Config, policy_type: str, env: Env):
+def make_baseline_policy(config: Config, policy_type: str, env: Env, device: torch.device):
   assert policy_type in SUPPORTED_POLICIES, f"Unsupported policy type '{policy_type}'"
   if policy_type == "ppo": # TODO: explicitly cast config
     return PPOBaseline(config, env)
   elif policy_type == "planet":
-    return Planet(config, action_size(env), observation_size(env), env.action_space)
+    return Planet(config, action_size(env), observation_size(env), env.action_space, device)
 
 
 class PPOBaseline:
@@ -95,7 +95,7 @@ class PlanetMetrics(Metrics):
     return dict(observation_loss=self.observation_loss, reward_loss=self.reward_loss, kl_loss=self.kl_loss)
 
 class Planet:
-  def __init__(self, config, action_size, observation_size, action_space):
+  def __init__(self, config, action_size, observation_size, action_space, device):
     self.free_nats = config.free_nats
     self.grad_clip_norm = config.grad_clip_norm
     self.batch_size = config.batch_size
@@ -104,7 +104,7 @@ class Planet:
     self.action_noise = config.action_noise
     self.action_size = action_size
     self.action_space = action_space
-    self.device = config.device
+    self.device = device
     self.metrics = PlanetMetrics()
     # TODO: track prediction errors + provide reconstructions for vis
     self.initialise()
@@ -116,7 +116,7 @@ class Planet:
     # move models to device and collect parameters
     self.params_list = list()
     for m in self.models.values():
-      m.to(device=config.device)
+      m.to(device=self.device)
       self.params_list.extend(list(m.parameters()))
 
     # initialise mpc planner
@@ -131,8 +131,8 @@ class Planet:
                               float(action_space.high[0]))
 
     # global prior parameters for latent overshooting
-    self.zero_mean = torch.zeros(config.batch_size, config.state_size, device=config.device)
-    self.unit_var = torch.ones(config.batch_size, config.state_size, device=config.device)
+    self.zero_mean = torch.zeros(config.batch_size, config.state_size, device=self.device)
+    self.unit_var = torch.ones(config.batch_size, config.state_size, device=self.device)
 
   def load_models(self, models_path: str):
     pass

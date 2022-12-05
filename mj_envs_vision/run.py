@@ -47,28 +47,32 @@ if __name__ == "__main__":
   assert config.chunk_size <= config.max_episode_length // config.action_repeat
 
   # setup
-  out_dir = os.path.join("results", f"train_{config.run_id}")
+  out_dir = os.path.join("results", f"train_{policy_type}_{config.run_id}")
   os.makedirs(out_dir, exist_ok=True)
   np.random.seed(config.seed)
   torch.manual_seed(config.seed)
   if torch.cuda.is_available() and not config.disable_cuda:
-    config.device = torch.device('cuda')
+    config.device_type = 'cuda'
     torch.cuda.manual_seed(config.seed)
   else:
-    config.device = torch.device('cpu')
+    config.device_type = 'cpu'
+
+  # save run config (in case of updates)
+  config.save(os.path.join(out_dir, "config.json"))
 
   # TODO: create worker setup and parallelise
   # instantiate env, policy, optimiser
   E = make_env(config)
-  policy = make_baseline_policy(config, policy_type, E)
+  device = torch.device(config.device_type)
+  policy = make_baseline_policy(config, policy_type, E, device)
   if config.models_path != "":
     policy.load_models(config.models_path)
   optimiser = optim.Adam(policy.params_list, lr=config.learning_rate, eps=config.adam_epsilon)
   # train policy on target environment
   if policy_type == "planet":
-    exp_rewards, episode_rewards, episode_trajectories = train_policy(config, E, policy, optimiser, out_dir)
+    exp_rewards, episode_rewards, episode_trajectories = train_policy(config, E, policy, optimiser, out_dir, device)
   else:
-    exp_rewards, episode_rewards, episode_trajectories = train_sb3_policy(config, E, policy, out_dir)
+    exp_rewards, episode_rewards, episode_trajectories = train_sb3_policy(config, E, policy, out_dir, device)
   E.close()
 
   # save performance metrics (TODO: pickle)
