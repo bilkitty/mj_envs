@@ -24,7 +24,8 @@ def train(config, experience, policy, optimiser):
     # sample data iid
     obs, actions, rewards, not_done = experience.sample(config.batch_size, config.chunk_size)
     policy.update(sample_batch=[obs, actions, rewards, not_done], optimiser=optimiser)
-  return policy.metrics
+
+  return policy.metrics.total_loss() # releases comp graph memory
 
 
 def evaluate(config, policy, count=10):
@@ -57,7 +58,7 @@ def save_rewards_fig(rewards, path: str):
   fig = plot_rewards(rewards)
   fig.savefig(path)
 
-def train_sb3_policy(config, E, policy, out_dir):
+def train_sb3_policy(config, E, policy, out_dir, device):
   train_time = list()
   eval_time = list()
   exp_rewards = list()
@@ -69,7 +70,7 @@ def train_sb3_policy(config, E, policy, out_dir):
                                        observation_size(E),
                                        action_size(E),
                                        config.bit_depth,
-                                       config.device)
+                                       device)
 
   # populate buffer with requested batch and chunk size
   rwd, done = 0.0, False
@@ -105,7 +106,7 @@ def train_sb3_policy(config, E, policy, out_dir):
   return exp_rewards, episode_rewards, episode_trajectories
 
 
-def train_policy(config, E, policy, optimiser, out_dir):
+def train_policy(config, E, policy, optimiser, out_dir, device):
   # NOTE: all policies are responsible for preprocessing obs into input data
   train_time = list()
   eval_time = list()
@@ -120,7 +121,7 @@ def train_policy(config, E, policy, optimiser, out_dir):
                                        observation_size(E),
                                        action_size(E),
                                        config.bit_depth,
-                                       config.device)
+                                       device)
 
   # populate buffer with requested batch and chunk size
   rwd, done = 0.0, False
@@ -213,20 +214,26 @@ if __name__ == "__main__":
   np.random.seed(config.seed)
   torch.manual_seed(config.seed)
   if torch.cuda.is_available() and not config.disable_cuda:
-    config.device = torch.device('cuda')
+    config.device_type = 'cuda'
     torch.cuda.manual_seed(config.seed)
   else:
-    config.device = torch.device('cpu')
+    config.device_type = 'cpu'
 
   # TODO: create worker setup and parallelise
   # instantiate env, policy, optimiser
   E = make_env(config)
-  policy = Planet(config, action_size(E), observation_size(E), action_size(E))
+  device = torch.device(config.device_type)
+  policy = Planet(config, action_size(E), observation_size(E), action_size(E), device)
   if config.models_path != "":
     policy.load_models(config.models_path)
   optimiser = optim.Adam(policy.params_list, lr=config.learning_rate, eps=config.adam_epsilon)
   # train policy on target environment
-  exp_rewards, episode_rewards, episode_trajectories = train_policy(config, E, policy, optimiser, out_dir)
+  exp_rewards, episode_rewards, episode_trajectories = train_policy(config,
+                                                                    E,
+                                                                    policy,
+                                                                    optimiser,
+                                                                    out_dir,
+                                                                    device)
   E.close()
 
   # visualise performance
