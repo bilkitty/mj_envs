@@ -2,9 +2,12 @@
 # ------------------------------------------------------------------------
 # We need the CUDA base dockerfile to enable GPU rendering
 # on hosts with GPUs.
-# The image below is a pinned version of nvidia/cuda:9.1-cudnn7-devel-ubuntu16.04 (from Jan 2018)
-# If updating the base image, be sure to test on GPU since it has broken in the past.
-FROM nvidia/cuda@sha256:4df157f2afde1cb6077a191104ab134ed4b2fd62927f27b69d788e8e79a45fa1
+# Base images available at https://hub.docker.com/r/nvidia/cuda/tags
+# Recommend using *cuddnnX-devel*
+# If updating the base image, be sure to test on GPU.
+#FROM nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04
+# NOTE: cuda version should match version in nvidia-smi output
+FROM nvidia/cuda:11.4.1-cudnn8-devel-ubuntu20.04
 
 # Use bourne-again shell
 SHELL ["/bin/bash", "-c"]
@@ -12,11 +15,14 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-get update -q \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     curl \
+    gcc \
     git \
     zip \
     libgl1-mesa-dev \
     libgl1-mesa-glx \
     libglew-dev \
+    libglfw3 \
+    patchelf \
     libosmesa6-dev \
     software-properties-common \
     net-tools \
@@ -30,15 +36,12 @@ RUN apt-get update -q \
 
 RUN DEBIAN_FRONTEND=noninteractive add-apt-repository --yes ppa:deadsnakes/ppa && apt-get update
 
-RUN curl -o /usr/local/bin/patchelf https://s3-us-west-2.amazonaws.com/openai-sci-artifacts/manual-builds/patchelf_0.9_amd64.elf \
-    && chmod +x /usr/local/bin/patchelf
-
 ENV LANG C.UTF-8
 
 # Anaconda setup
 ENV PATH /opt/conda/bin:$PATH
 
-RUN wget --quiet https://repo.anaconda.com/archive/Anaconda3-5.3.0-Linux-x86_64.sh -O ~/anaconda.sh && \
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/anaconda.sh && \
     /bin/bash ~/anaconda.sh -b -p /opt/conda && \
     rm ~/anaconda.sh && \
     ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
@@ -52,6 +55,7 @@ RUN mkdir -p /root/.mujoco \
     && tar -xf mujoco.tar.gz -C /root/.mujoco \
     && rm mujoco.tar.gz
 
+# Lib references
 ENV LD_LIBRARY_PATH /root/.mujoco/mujoco210/bin:${LD_LIBRARY_PATH}
 ENV LD_LIBRARY_PATH /usr/local/nvidia/lib64:${LD_LIBRARY_PATH}
 
@@ -62,16 +66,27 @@ RUN chmod +x /usr/local/bin/Xdummy
 COPY ./vendor/10_nvidia.json /usr/share/glvnd/egl_vendor.d/10_nvidia.json
 
 WORKDIR /mj_envs_vision
-# Copy over just requirements.txt at first. That way, the Docker cache doesn't
+# Copy over just requirements.txt and bash scripts at first. That way, the Docker cache doesn't
 # expire until we actually change the requirements.
+COPY ./vendor /mj_envs_vision/
 COPY ./requirements.txt /mj_envs_vision/
+COPY ./setup.bash /mj_envs_vision/
+RUN echo "source /mj_envs_vision/setup.bash" >> /mj_envs_vision/tool_setup.bash
+RUN echo "echo finished tool setup!" >> /mj_envs_vision/tool_setup.bash
+RUN chmod +x /mj_envs_vision/tool_setup.bash
+RUN /mj_envs_vision/tool_setup.bash
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN python3 -m pip install -U 'mujoco-py<2.2,>=2.1'
+RUN python3 -m pip install git+https://github.com/aravindr93/mjrl.git 
+
+# compile mujoco
+RUN python3 -c "import mujoco_py;print(mujoco_py.__version__)"
+
 
 # Copy over project
 COPY . /mj_envs_vision
-RUN git clone https://github.com/Kaixhin/PlaNet.git
-RUN git clone https://github.com/vikashplus/Adroit.git
-RUN source /usr/mj_envs_vision/setup.bash
-
+RUN rm -rf dependencies/*
+RUN git clone https://github.com/Kaixhin/PlaNet.git dependencies/PlaNet
+RUN git clone https://github.com/vikashplus/Adroit.git dependencies/Adroit
+ENTRYPOINT ["python3", "/mj_envs_vision/vendor/Xdummy-entrypoint"]
