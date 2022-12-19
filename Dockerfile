@@ -15,7 +15,6 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-get update -q \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     curl \
-    gcc \
     git \
     zip \
     libgl1-mesa-dev \
@@ -79,6 +78,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 RUN python3 -m pip install -U 'mujoco-py<2.2,>=2.1'
 RUN python3 -m pip install git+https://github.com/aravindr93/mjrl.git 
+# Install custom sb3 for compatibility with gym 0.24+
+RUN python3 -m pip install git+https://github.com/carlosluis/stable-baselines3@fix_tests
+RUN python3 -m pip install stable-baselines3[extra]
 
 # compile mujoco
 RUN python3 -c "import mujoco_py;print(mujoco_py.__version__)"
