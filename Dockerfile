@@ -71,7 +71,7 @@ COPY ./vendor /mj_envs_vision/
 COPY ./requirements.txt /mj_envs_vision/
 COPY ./setup.bash /mj_envs_vision/
 RUN echo "source /mj_envs_vision/setup.bash" >> /mj_envs_vision/tool_setup.bash
-RUN echo "echo finished tool setup!" >> /mj_envs_vision/tool_setup.bash
+RUN echo "unset LD_PRELOAD" >> /mj_envs_vision/tool_setup.bash
 RUN chmod +x /mj_envs_vision/tool_setup.bash
 RUN /mj_envs_vision/tool_setup.bash
 RUN pip install --no-cache-dir -r requirements.txt
