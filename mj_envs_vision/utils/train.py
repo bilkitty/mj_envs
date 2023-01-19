@@ -11,7 +11,7 @@ from mj_envs_vision.algos.baselines import Planet
 from mj_envs_vision.utils.helpers import visualise_batch_from_experience
 from mj_envs_vision.utils.helpers import visualise_trajectory
 from mj_envs_vision.utils.helpers import plot_rewards
-from mj_envs_vision.utils.helpers import make_env, is_from_adroit_suite
+from mj_envs_vision.utils.helpers import make_env
 from mj_envs_vision.utils.helpers import reset, step, observation_size, action_size
 from mj_envs_vision.utils.config import PlanetConfig
 

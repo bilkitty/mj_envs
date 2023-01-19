@@ -56,6 +56,7 @@ if __name__ == "__main__":
     torch.cuda.manual_seed(config.seed)
   else:
     config.device_type = 'cpu'
+    print('\033[93m' + "\n[WARN] No cuda devices found. Please reboot if on gpu capable machine.\n" + '\033[0m')
 
   # save run config (in case of updates)
   config.save(os.path.join(out_dir, "config.json"))
@@ -80,5 +81,7 @@ if __name__ == "__main__":
   # visualise performance
   plot_rewards(exp_rewards).savefig(os.path.join(out_dir, "train_rewards.png"))
   plot_rewards(episode_rewards).savefig(os.path.join(out_dir, "eval_rewards.png"))
+  # TODO: plot metrics
+  # TODO: save perf to txt
 
   print("done :)")

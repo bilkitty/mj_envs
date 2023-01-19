@@ -1,13 +1,14 @@
 {
-    "run_id" : "repro",
+    "run_id" : "walk-v",
     "seed" : 3,
     "env_name" : "Walker2d-v2",
     "sample_iters" : 100,
-    "learning_rate" : 3e-3,
-    "max_episodes" : 100,
+    "max_episodes" : 10000,
     "max_episode_length" : 200,
-    "test_interval" : 10,
+    "test_interval" : 500,
     "batch_size" : 50,
     "chunk_size" : 50,
-    "action_repeat" : 2
+    "action_repeat" : 2,
+    "model_type" : "mlp",
+    "state_type" : "observation"
 }
