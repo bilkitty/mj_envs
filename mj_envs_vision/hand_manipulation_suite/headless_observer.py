@@ -19,6 +19,7 @@ class HeadlessObserver(utils.EzPickle):
 
     def mj_viewer_headless_setup(self):
         # configure simulation cam (instantiates camera)
+        # instantiates mujoco_py.cymj.MjRenderContextOffscreen object
         self.sim.render(64, 64)
         self.sim.forward()
 

@@ -14,6 +14,7 @@ class Config(json.JSONEncoder):
     self.device_type = 'cpu'
     self.disable_cuda = False
     self.models_path = ""
+    self.nogui = True
     # Algorithm parameters
     self.seed_episodes = 2
     self.max_episodes = 1000
