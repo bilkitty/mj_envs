@@ -41,7 +41,7 @@ def step(env, action):
 
 def make_env(config):
     assert is_valid_env(config.env_name)
-    e = gym_make(config.env_name, render_mode='rgb_array', width=64, height=64)
+    e = gym_make(config.env_name, render_mode='rgb_array', width=64, height=64, is_headless=config.nogui)
     #e.seed(config.seed)
     if isinstance(e, TimeLimit):
       e = e.env

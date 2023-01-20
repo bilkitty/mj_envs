@@ -9,7 +9,7 @@ import os
 ADD_BONUS_REWARDS = True
 
 class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
-    def __init__(self, render_mode, width=64, height=64):
+    def __init__(self, render_mode, width=64, height=64, is_headless=False):
         self.target_obj_bid = 0
         self.S_grasp_sid = 0
         self.eps_ball_sid = 0
@@ -26,6 +26,7 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         curr_dir = os.path.dirname(os.path.abspath(__file__))
         mujoco_env.MujocoEnv.__init__(self, curr_dir+'/assets/DAPG_pen.xml', 5)
         self.render_mode = render_mode
+        self.is_headless = is_headless
         self.width = width
         self.height = height
 
@@ -36,6 +37,13 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.sim.model.actuator_biasprm[self.sim.model.actuator_name2id('A_FFJ3'):self.sim.model.actuator_name2id('A_THJ0')+1,:3] = np.array([0, -1, 0])
 
         utils.EzPickle.__init__(self)
+
+        # setup models and renderer (either window or headless aka 'nogui')
+        if self.is_headless:
+            self.observer = HeadlessObserver(self.sim, self.target_obj_bid)
+            #self.observer.set_view('aerial')
+        self.reset_model() # TODO: verify that this should be commented
+
         self.target_obj_bid = self.sim.model.body_name2id("target")
         self.S_grasp_sid = self.sim.model.site_name2id('S_grasp')
         self.obj_bid = self.sim.model.body_name2id('Object')
@@ -52,9 +60,6 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.act_rng = 0.5*(self.model.actuator_ctrlrange[:,1]-self.model.actuator_ctrlrange[:,0])
         self.action_space.high = np.ones_like(self.model.actuator_ctrlrange[:,1])
         self.action_space.low  = -1.0 * np.ones_like(self.model.actuator_ctrlrange[:,0])
-
-        self.observer = HeadlessObserver(self.sim, self.target_obj_bid)
-        #self.observer.set_view('aerial')
 
     def step(self, a):
         a = np.clip(a, -1.0, 1.0)
@@ -115,7 +120,14 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         desired_orien[1] = self.np_random.uniform(low=-1, high=1)
         self.model.body_quat[self.target_obj_bid] = euler2quat(desired_orien)
         self.sim.forward()
-        self.mj_viewer_headless_setup()
+        if self.is_headless:
+            # NOTE: ensure that EGL rendering libs are referenced
+            # (i.e., unset LD_PRELOAD)
+            self.mj_viewer_headless_setup()
+        else:
+            # NOTE: ensure that rendering libs are referenced by
+            # exporting libGLEW.so and libGL.so paths to LD_PRELOAD
+            self.mj_viewer_setup()
         return self.get_obs(), {}
 
     def get_env_state(self):
@@ -145,8 +157,7 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.viewer.cam.distance = 1.0
 
     def mj_viewer_headless_setup(self):
-        if self.observer is not None:
-            self.observer.mj_viewer_headless_setup()
+        self.observer.mj_viewer_headless_setup()
 
     def mj_viewer_headless_setup(self):
         # configure simulation cam
@@ -176,4 +187,7 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         return success_percentage
 
     def render(self, *args, **kwargs):
-        return self.observer.render(args, kwargs)
+        if self.is_headless:
+            return self.observer.render(args, kwargs)
+        else:
+            self.viewer.render()
