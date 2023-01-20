@@ -7,6 +7,7 @@ from mjrl.policies.gaussian_mlp import MLP
 from mj_envs_vision.utils.helpers import make_env
 from mj_envs_vision.utils.config import Config
 
+max_door_offset = 25 # the number of iterations after which door policy freezes
 horizons = {"door": 2000, "pen": 2000, "relocate": 1000, "hammer": 2000}
 DESC = '''
 Helper script to visualize policy (in mjrl format).\n
@@ -49,6 +50,19 @@ def main(env_name, policy, mode, seed, episodes, save_mode):
             t = 0
             o = e.env.reset()
             if isinstance(o, tuple): o = o[0]
+
+            # NOTE: strangely, task failure on
+            # door open when delay is active
+            # TODO: source of failure?
+            if 'door' in env_name:
+                offset = max_door_offset - 3
+            else:
+                offset = horizons[env_base_name] / 10
+
+            while t < offset:
+                a_zeros = pi.get_action(o)[0] * 0
+                e.env.step(a_zeros)
+                t = t+1
 
             d = False
             score = 0.0
