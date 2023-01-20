@@ -1,12 +1,13 @@
 import os
 import click
 import pickle
-import mj_envs_vision
 from gym.wrappers.time_limit import TimeLimit
 from PIL import Image
-from mjrl.utils.gym_env import GymEnv
 from mjrl.policies.gaussian_mlp import MLP
+from mj_envs_vision.utils.helpers import make_env
+from mj_envs_vision.utils.config import Config
 
+horizons = {"door": 2000, "pen": 2000, "relocate": 1000, "hammer": 2000}
 DESC = '''
 Helper script to visualize policy (in mjrl format).\n
 USAGE:\n
@@ -20,24 +21,45 @@ USAGE:\n
 @click.option('--policy', type=str, help='absolute path of the policy file', default=None)
 @click.option('--mode', type=str, help='exploration or evaluation mode for policy', default='evaluation')
 @click.option('--seed', type=int, help='seed for generating environment instances', default=123)
-@click.option('--episodes', type=int, help='number of episodes to visualize', default=10)
-@click.option('--save_mode', type=int, default=1, help='flag to save renderings')
+@click.option('--episodes', type=int, help='number of episodes to visualize', default=1)
+@click.option('--save_mode', type=int, default=1, help='flag to save renderings (0=no save, 1=save)')
 
 
 def main(env_name, policy, mode, seed, episodes, save_mode):
-    e = GymEnv(env_name)
-    e.set_seed(seed)
-    if policy is not None:
-        pi = pickle.load(open(policy, 'rb'))
+    config = Config()
+    config.env_name = env_name
+    config.nogui = save_mode == 1
+    config.seed = seed
+    config.state_type = 'vector' # TODO: support for images
+    config.max_episodes = episodes
+    e = make_env(config)
+    if policy is None:
+        pi = MLP(e.env_spec, hidden_sizes=(32, 32), seed=seed, init_log_std=-1.0)
     else:
-        pi = MLP(e.spec, hidden_sizes=(32,32), seed=seed, init_log_std=-1.0)
+        pi = pickle.load(open(policy, 'rb'))
 
     if save_mode == 1:
         record_policy(e, num_episodes=episodes, mode='rgb_array', env_name=env_name, policy_name="random")
         print(f"done")
     else:
         # render policy
-        e.visualize_policy(pi, num_episodes=episodes, horizon=e.horizon, mode=mode)
+        env_base_name = env_name.split('-')[0]
+        e.unwrapped.mujoco_render_frames = True
+        for ep in range(episodes):
+            t = 0
+            o = e.env.reset()
+            if isinstance(o, tuple): o = o[0]
+
+            d = False
+            score = 0.0
+            while t < horizons[env_base_name] and d == False:
+                a = pi.get_action(o)[0] if mode == 'exploration' else pi.get_action(o)[1]['evaluation']
+                o, r, d = e.env.step(a)[:3]
+                t = t+1
+                score = score + r
+            print("Episode score = %f" % score)
+            # TODO:  prompt for moving on
+        e.unwrapped.mujoco_render_frames = False
 
 
 ENABLE_RESIZE = False
@@ -55,10 +77,11 @@ def record_policy(gym_env, num_episodes, mode, env_name="unk", policy_name="unk"
         t = 0
         term = False
         obs = gym_env.env.reset()
-        trajectory.append([gym_env.env.render(mode, ENABLE_RESIZE).numpy() * 255])
-        while t < gym_env.horizon and term is False:
-            obs, reward, term, _ = gym_env.step(policy.get_action(obs)[0] if policy else gym_env.env.action_space.sample())
-            trajectory[-1].append(gym_env.env.render(mode, ENABLE_RESIZE).numpy() * 255)
+        trajectory.append([gym_env.env.render(mode, ENABLE_RESIZE) * 255])
+        while t < horizons[env_name.split('-')[0]] and term is False:
+            action = policy.get_action(obs)[0] if policy else gym_env.env.action_space.sample()
+            obs, reward, term = gym_env.env.step(action)[:3]
+            trajectory[-1].append(gym_env.env.render(mode, ENABLE_RESIZE) * 255)
             t += 1
 
         pils = [Image.fromarray(frame.transpose(1, 2, 0).astype('uint8')) for frame in trajectory[-1]]
