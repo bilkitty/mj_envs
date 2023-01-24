@@ -58,9 +58,6 @@ if __name__ == "__main__":
     config.device_type = 'cpu'
     print('\033[93m' + "\n[WARN] No cuda devices found. Please reboot if on gpu capable machine.\n" + '\033[0m')
 
-  # save run config (in case of updates)
-  config.save(os.path.join(out_dir, "config.json"))
-
   # TODO: create worker setup and parallelise
   # instantiate env, policy, optimiser
   E = make_env(config)
@@ -75,6 +72,9 @@ if __name__ == "__main__":
   else:
     exp_rewards, episode_rewards, episode_trajectories = train_sb3_policy(config, E, policy, out_dir, device)
   E.close()
+
+  # save (updated) run config (in case of updates)
+  config.save(os.path.join(out_dir, "config.json"))
 
   # save performance metrics (TODO: pickle)
 
