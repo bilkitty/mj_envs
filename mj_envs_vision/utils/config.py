@@ -30,6 +30,7 @@ class Config(json.JSONEncoder):
     self.grad_clip_norm = 1000
     self.candidates = 1000
     self.top_candidates = 100
+    self.checkpoint_interval = 100
     # Environment parameters
     self.env_name = None
     self.action_repeat = 2

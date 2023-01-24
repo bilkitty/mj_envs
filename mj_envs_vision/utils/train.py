@@ -163,6 +163,12 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
       save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_rewards.png"))
       save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
 
+    # save model
+    # TODO: test ppo
+    if ep % config.checkpoint_interval == 0:
+      serialisable_models = { k : v.state_dict() for k, v in policy.models.items()}
+      torch.save(serialisable_models, os.path.join(out_dir, f"{policy.name}-{config.state_type}-{config.env_name}-{ep}.pt"))
+
   # TODO: rm
   if config.state_type == "observation":
     for i in range(5):
