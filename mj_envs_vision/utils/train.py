@@ -31,28 +31,33 @@ def train(config, experience, policy, optimiser):
 def evaluate(config, policy, count=10):
   with torch.no_grad():
     total_rwds = []
+    successes = []
     trajectories = []
     for i in range(count): # consider threading?
       # roll out policy
       rwd = 0.0
+      success = 0.0
       traj = []
       T = make_env(config)
       obs, _ = reset(T)
       policy.initialise(**dict(count=1))
       for t in tqdm(range(config.max_episode_length // config.action_repeat)):
         action = policy.act(obs.squeeze(dim=0)).squeeze(dim=0).cpu()
-        next_obs, r, done = step(T, action)
+        next_obs, r, done, s = step(T, action)
         traj.append((obs.squeeze(dim=0), action, r))
         rwd += r
         obs = next_obs
+        if s:
+          success += 1
 
       T.env.close()
-      # record final obs
+      # record final obs, reward and success rates
       traj.append((next_obs.squeeze(dim=0), torch.zeros_like(action), r))
       total_rwds.append(rwd)
+      successes.append(success / config.max_episode_length / config.action_repeat)
       trajectories.append(traj)
 
-    return total_rwds, trajectories
+    return total_rwds, successes, trajectories
 
 def save_rewards_fig(rewards, path: str):
   fig = plot_rewards(rewards)
@@ -63,6 +68,8 @@ def train_sb3_policy(config, E, policy, out_dir, device):
   eval_time = list()
   exp_rewards = list()
   episode_rewards = list()
+  exp_successes = list()
+  episode_successes = list()
   episode_trajectories = list()
   # initialise experience replay buffer
   experience = memory.ExperienceReplay(config.experience_size,
@@ -80,16 +87,18 @@ def train_sb3_policy(config, E, policy, out_dir, device):
     if PROF: tns = time.time_ns()
     policy.update(sample_batch=[], optimiser=None)
     exp_rewards.append((ep, policy.metrics.total_loss()["value_loss"][-1]))
+    #exp_successes.append((ep, policy.metrics.total_loss()["success"][-1]))
     if PROF: train_time.append(time.time_ns() - tns)
 
     if ep % config.test_interval == 0:
       if PROF: tns = time.time_ns()
       policy.set_models_to_eval()
-      rewards, trajs = evaluate(config, policy, count=10)
+      rewards, successes, trajs = evaluate(config, policy, count=10)
       policy.set_models_to_train()
       if PROF: eval_time.append(time.time_ns() - tns)
 
       episode_rewards.append((ep, rewards))
+      episode_successes.append((ep, successes))
       episode_trajectories.append((ep, trajs))
       if config.state_type == "observation":
         visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
@@ -97,6 +106,8 @@ def train_sb3_policy(config, E, policy, out_dir, device):
       # TODO: dump metrics to tensorboard
       save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_reward_loss.png"))
       save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
+      #save_rewards_fig(exp_successes, os.path.join(out_dir, "train_successes.png"))
+      save_rewards_fig(episode_successes, os.path.join(out_dir, "eval_successes.png"))
 
       # save model
       if ep % config.checkpoint_interval == 0:
@@ -106,6 +117,11 @@ def train_sb3_policy(config, E, policy, out_dir, device):
     train_time, eval_time = [t / 1e9 for t in train_time], [t / 1e9 for t in eval_time]
     print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s")
     print(f"total time:\n\t1.00x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr")
+
+  save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_reward_loss.png"))
+  save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
+  # save_rewards_fig(exp_successes, os.path.join(out_dir, "train_successes.png"))
+  save_rewards_fig(episode_successes, os.path.join(out_dir, "eval_successes.png"))
 
   return exp_rewards, episode_rewards, episode_trajectories
 
@@ -117,6 +133,8 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
   sim_time = list()
   exp_rewards = list()
   episode_rewards = list()
+  exp_successes = list()
+  episode_successes = list()
   episode_trajectories = list()
   # TODO: replace with simpler buffer (no discretisation)
   # initialise experience replay buffer
@@ -138,7 +156,7 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
 
     action = E.action_space.sample()
     experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), torch.FloatTensor(action), rwd, done)
-    obs, rwd, done = step(E, action)
+    obs, rwd, done, _ = step(E, action) # success rate is not given to algos
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
     if PROF: tns = time.time_ns()
@@ -147,18 +165,20 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
     # TODO: dump metrics to tensorboard
 
     if PROF: tns = time.time_ns()
-    train_reward = collect_experience(config, E, experience, policy)
+    train_reward, train_successes = collect_experience(config, E, experience, policy)
     exp_rewards.append((ep, train_reward))
+    exp_successes.append((ep, train_successes))
     if PROF: sim_time.append(time.time_ns() - tns)
 
     if ep % config.test_interval == 0:
       if PROF: tns = time.time_ns()
       policy.set_models_to_eval()
-      rewards, trajs = evaluate(config, policy, count=10)
+      rewards, successes, trajs = evaluate(config, policy, count=10)
       policy.set_models_to_train()
       if PROF: eval_time.append(time.time_ns() - tns)
 
       episode_rewards.append((ep, rewards))
+      episode_successes.append((ep, successes))
       episode_trajectories.append((ep, trajs))
       if config.state_type == "observation":
         visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
@@ -166,6 +186,8 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
       # TODO: dump metrics to tensorboard
       save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_rewards.png"))
       save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
+      save_rewards_fig(exp_successes, os.path.join(out_dir, "train_success.png"))
+      save_rewards_fig(episode_successes, os.path.join(out_dir, "eval_success.png"))
 
     # save model
     if ep % config.checkpoint_interval == 0:
@@ -181,24 +203,35 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
     print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s\n\t{np.median(sim_time): .2f}s")
     print(f"total time:\n\t1.00x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr\n\t{np.sum(sim_time)/np.sum(train_time): .2f}x tr")
 
+  save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_rewards.png"))
+  save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
+  save_rewards_fig(exp_successes, os.path.join(out_dir, "train_success.png"))
+  save_rewards_fig(episode_successes, os.path.join(out_dir, "eval_success.png"))
+
   return exp_rewards, episode_rewards, episode_trajectories
 
 
 def collect_experience(config, E, experience, policy):
   with torch.no_grad():
     total_rwd = 0.0
+    success = 0.0
     obs, _ = reset(E)
     policy.initialise(**dict(count=1))
     # roll out policy and update experience
     for t in tqdm(range(config.max_episode_length // config.action_repeat)):
       action = policy.sample_action(obs).squeeze(dim=0).cpu()
-      next_obs, rwd, done = step(E, action)
+      next_obs, rwd, done, suc = step(E, action)
       experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
       total_rwd += rwd
       obs = next_obs
       #if done: break # less time, but not good idea
+      if suc:
+        success += 1
 
-    return total_rwd
+    # success rate
+    success /= config.max_episode_length / config.action_repeat
+
+    return total_rwd, success
 
 
 if __name__ == "__main__":

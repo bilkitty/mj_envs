@@ -1,4 +1,5 @@
 import os
+import mjrl
 import numpy as np
 from PIL import Image
 from typing import List, Tuple
@@ -36,8 +37,12 @@ def reset(env):
   return env.reset()
 
 def step(env, action):
-  obs, reward, done = env.step(action)[:3]
-  return obs, reward, done
+  if isinstance(env.unwrapped, mjrl.envs.mujoco_env.MujocoEnv):
+    obs, reward, done, success = env.step(action)[:4]
+  else:
+    obs, reward, done = env.step(action)[:3]
+    success = False # false = unknown
+  return obs, reward, done, success
 
 def make_env(config):
     assert is_valid_env(config.env_name)
