@@ -31,16 +31,36 @@ def make_baseline_policy(config: Config, policy_type: str, env: Env, device: tor
     return Planet(config, action_size(env), observation_size(env), env.action_space, device)
 
 
+
+class PPOMetrics(Metrics):
+  def __init__(self):
+    Metrics.__init__(self)
+    self.policy_gradient_loss = list()
+    self.value_loss = list()
+    self.entropy_loss = list()
+    self.approx_kl = list()
+    self.n_updates = list()
+    self.clip_fraction = list()
+    self.time = list()
+
+  def total_loss(self):
+    return dict(policy_gradient_loss=self.policy_gradient_loss,
+                value_loss=self.value_loss,
+                entropy_loss=self.entropy_loss,
+                approx_kl=self.approx_kl)
+
 class PPOBaseline:
   def __init__(self, config, custom_env: Env):
+    self.name = "ppo"
     self.ppo = None
     self.env_name = config.env_name
+    self.log_interval = config.checkpoint_interval
     self.learning_rate = config.learning_rate
     self.n_steps = config.sample_iters
     self.epochs = config.max_episodes
     self.batch_size = config.batch_size
     self.target_kl = None
-    self.metrics = Metrics()
+    self.metrics = PPOMetrics()
 
     if config.model_type == "mlp":
       policy_type = ActorCriticPolicy#(observation_space, action_space, lr_schedule=lambda x: 0.0)
@@ -55,7 +75,8 @@ class PPOBaseline:
               n_steps=self.n_steps,
               n_epochs=self.epochs,
               batch_size=self.batch_size,
-              target_kl=self.target_kl)
+              target_kl=self.target_kl,
+              tensorboard_log=config.log_path)
 
     named_model_parameters = self.ppo.get_parameters()["policy"]
     self.params_list = [Parameter(v) for k,v in named_model_parameters.items()]
@@ -70,9 +91,21 @@ class PPOBaseline:
   def set_models_to_train(self):
     pass
 
+  def load(self, models_path: str):
+    self.ppo.load(models_path)
+
+  def save(self, models_path: str):
+    self.ppo.save(models_path)
+
   def update(self, sample_batch: List, optimiser):
-    self.ppo.learn(self.n_steps, log_interval=10, progress_bar=True)
-    self.metrics.total_return = 0.0
+    self.ppo.learn(self.n_steps, log_interval=self.log_interval, progress_bar=True)
+    if self.ppo.logger.name_to_value and len(self.ppo.logger.name_to_value) > 0:
+      self.metrics.value_loss.append(self.ppo.logger.name_to_value['train/value_loss'])
+      self.metrics.entropy_loss.append(self.ppo.logger.name_to_value['train/entropy_loss'])
+      self.metrics.policy_gradient_loss.append(self.ppo.logger.name_to_value['train/policy_gradient_loss'])
+      self.metrics.approx_kl.append(self.ppo.logger.name_to_value['train/approx_kl'])
+      self.metrics.n_updates.append(self.ppo.logger.name_to_value['train/n_updates'])
+      self.metrics.clip_fraction.append(self.ppo.logger.name_to_value['train/clip_fraction'])
 
   def act(self, obs: torch.Tensor):
     action, state = self.ppo.predict(obs.numpy())
@@ -94,8 +127,10 @@ class PlanetMetrics(Metrics):
   def total_loss(self):
     return dict(observation_loss=self.observation_loss, reward_loss=self.reward_loss, kl_loss=self.kl_loss)
 
+
 class Planet:
   def __init__(self, config, action_size, observation_size, action_space, device):
+    self.name = "planet"
     self.free_nats = config.free_nats
     self.grad_clip_norm = config.grad_clip_norm
     self.batch_size = config.batch_size
@@ -134,8 +169,11 @@ class Planet:
     self.zero_mean = torch.zeros(config.batch_size, config.state_size, device=self.device)
     self.unit_var = torch.ones(config.batch_size, config.state_size, device=self.device)
 
-  def load_models(self, models_path: str):
+  def load(self, models_path: str):
     pass
+
+  def save(self, models_path: str):
+    torch.save({k: v.state_dict() for k, v in self.models.items()}, models_path)
 
   def set_models_to_eval(self):
     for m in self.models.values(): m.eval()
