@@ -79,7 +79,7 @@ def train_sb3_policy(config, E, policy, out_dir, device):
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)):
     if PROF: tns = time.time_ns()
     policy.update(sample_batch=[], optimiser=None)
-    exp_rewards.append((ep, policy.metrics.total_return))
+    exp_rewards.append((ep, policy.metrics.total_loss()["value_loss"][-1]))
     if PROF: train_time.append(time.time_ns() - tns)
 
     if ep % config.test_interval == 0:
@@ -95,8 +95,12 @@ def train_sb3_policy(config, E, policy, out_dir, device):
         visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
 
       # TODO: dump metrics to tensorboard
-      #save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_rewards.png"))
+      save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_reward_loss.png"))
       save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
+
+      # save model
+      if ep % config.checkpoint_interval == 0:
+        policy.save(os.path.join(out_dir, f"{policy.name}-{config.state_type}-{config.env_name}-{ep}"))
 
   if PROF:
     train_time, eval_time = [t / 1e9 for t in train_time], [t / 1e9 for t in eval_time]
@@ -164,10 +168,8 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
       save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
 
     # save model
-    # TODO: test ppo
     if ep % config.checkpoint_interval == 0:
-      serialisable_models = { k : v.state_dict() for k, v in policy.models.items()}
-      torch.save(serialisable_models, os.path.join(out_dir, f"{policy.name}-{config.state_type}-{config.env_name}-{ep}.pt"))
+      policy.save(os.path.join(out_dir, f"{policy.name}-{config.state_type}-{config.env_name}-{ep}.pt"))
 
   # TODO: rm
   if config.state_type == "observation":

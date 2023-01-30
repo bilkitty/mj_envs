@@ -81,6 +81,7 @@ def plot_rewards(rewards: List[Tuple]):
   x = len(rwd.shape)
   if len(rwd.shape) == 1:
     ax.plot(ep, rwd)
+    rwd = rwd.reshape(1, -1)
   else:
     mu, std, med = np.mean(rwd, axis=1), np.std(rwd, axis=1), np.median(rwd, axis=1)
     ax.plot(ep, mu, linestyle='dashed', linewidth=0.3, label="mean")

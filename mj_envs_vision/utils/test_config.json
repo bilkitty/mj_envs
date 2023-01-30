@@ -6,6 +6,7 @@
     "max_episodes" : 10000,
     "max_episode_length" : 200,
     "test_interval" : 500,
+    "checkpoint_interval" : 500,
     "batch_size" : 50,
     "chunk_size" : 50,
     "action_repeat" : 2,
