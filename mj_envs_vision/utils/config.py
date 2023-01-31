@@ -36,6 +36,7 @@ class Config(json.JSONEncoder):
     self.env_name = None
     self.action_repeat = 2
     self.state_type = 'observation'
+    self.variation_type = None
     self.bit_depth = 5
     # Memory parameters
     self.batch_size = 50

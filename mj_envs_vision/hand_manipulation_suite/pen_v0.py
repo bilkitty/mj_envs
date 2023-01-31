@@ -9,7 +9,7 @@ import os
 ADD_BONUS_REWARDS = True
 
 class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
-    def __init__(self, render_mode, width=64, height=64, is_headless=False):
+    def __init__(self, render_mode, width=64, height=64, is_headless=False, variation_type=None):
         self.target_obj_bid = 0
         self.S_grasp_sid = 0
         self.eps_ball_sid = 0
@@ -29,6 +29,7 @@ class PenEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.is_headless = is_headless
         self.width = width
         self.height = height
+        self.variation_type = variation_type
 
         # change actuator sensitivity
         self.sim.model.actuator_gainprm[self.sim.model.actuator_name2id('A_WRJ1'):self.sim.model.actuator_name2id('A_WRJ0')+1,:3] = np.array([10, 0, 0])
