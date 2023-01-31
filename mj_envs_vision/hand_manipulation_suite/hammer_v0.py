@@ -9,7 +9,7 @@ import os
 ADD_BONUS_REWARDS = True
 
 class HammerEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
-    def __init__(self, render_mode, width=64, height=64, is_headless=False):
+    def __init__(self, render_mode, width=64, height=64, is_headless=False, variation_type=None):
         self.target_obj_sid = -1
         self.S_grasp_sid = -1
         self.obj_bid = -1
@@ -22,6 +22,7 @@ class HammerEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         self.is_headless = is_headless
         self.width = width
         self.height = height
+        self.variation_type = variation_type
         utils.EzPickle.__init__(self)
 
         # change actuator sensitivity
@@ -101,7 +102,24 @@ class HammerEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
     def reset_model(self):
         self.sim.reset()
         target_bid = self.model.body_name2id('nail_board')
-        self.model.body_pos[target_bid,2] = self.np_random.uniform(low=0.1, high=0.25)
+        self.model.body_pos[target_bid, 2] = self.np_random.uniform(low=0.1, high=0.25)
+
+        # introduce variations based on mode
+        hammer_bid = self.model.body_name2id('Object')
+        head_gid = self.model.geom_name2id("head")
+        neck_gid = self.model.geom_name2id("neck")
+        if self.variation_type == "mass":
+            x = self.np_random.uniform(low=0.05, high=2.5)
+            self.model.body_mass[hammer_bid] = x
+            self.model.geom_rgba[head_gid, 0] = x / 2.5
+        elif self.variation_type == "pos":
+            x = self.np_random.uniform(low=-0.24, high=-0.10)
+            self.model.geom_pos[head_gid, 0] = x
+            self.model.geom_pos[neck_gid, 0] = -0.14 - (-0.24 - x)
+        elif self.variation_type == "size":
+            self.model.geom_size[head_gid, 0] = self.np_random.uniform(low=0.01, high=0.04)
+            self.model.geom_size[head_gid, 1] = self.np_random.uniform(low=0.02, high=0.08)
+
         self.sim.forward()
         if self.is_headless:
             # NOTE: ensure that EGL rendering libs are referenced
