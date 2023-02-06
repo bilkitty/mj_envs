@@ -56,6 +56,9 @@ class Config(json.JSONEncoder):
       raise Exception("only json configs are supported atm")
 
     # TODO: is it okay to use __dict__?
+    if isinstance(cfg, str):
+      cfg = json.loads(cfg)
+
     for att, v in cfg.items():
       if att in list(self.__dict__.keys()):
         self.__dict__[att] = v
@@ -67,7 +70,8 @@ class Config(json.JSONEncoder):
   def save(self, filepath: str):
     fp = open(filepath, 'w')
     if "json" in filepath:
-        json.dump(Config().encode(self), fp, indent=2)
+        #json.dump(Config().encode(self), fp, indent=2)
+        json.dump(Config(), fp, indent=2)
     else:
       raise Exception("only json configs are supported atm")
 
@@ -97,3 +101,16 @@ class PPOConfig(Config):
   def __init__(self):
     Config.__init__(self)
     self.model_type = "mlp"
+
+
+def load_config(config_path, policy_type):
+  if policy_type == "ppo":
+    config = PPOConfig()
+  elif policy_type == "planet":
+    config = PlanetConfig()
+  else:
+    config = Config()
+  config.load(config_path)
+  print(config.str())
+
+  return config

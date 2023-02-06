@@ -1,6 +1,9 @@
 from gym import Env
 from typing import List
+import os
+import glob
 import torch
+import pickle
 from torch import nn
 from torch.nn.parameter import Parameter
 from torch.nn import functional as F
@@ -14,22 +17,30 @@ from dependencies.PlaNet.planner import MPCPlanner
 from dependencies.PlaNet.env import _images_to_observation
 
 # TODO: replace these with own generic implementation
+from mjrl.policies.gaussian_mlp import MLP
 from mj_envs_vision.utils.helpers import Metrics
 from mj_envs_vision.utils.helpers import expand, flatten_sample
-from mj_envs_vision.utils.config import Config, PPOConfig, PlanetConfig
 from mj_envs_vision.utils.helpers import action_size, observation_size
+from mj_envs_vision.utils.config import Config
+from mj_envs_vision.utils.wrappers import StateActionSpec
 
 
-SUPPORTED_POLICIES = ["planet", "ppo"]
+SUPPORTED_POLICIES = ["default", "pretrained", "planet", "ppo"]
 
 
 def make_baseline_policy(config: Config, policy_type: str, env: Env, device: torch.device):
   assert policy_type in SUPPORTED_POLICIES, f"Unsupported policy type '{policy_type}'"
-  if policy_type == "ppo": # TODO: explicitly cast config
+  # TODO: support for images in default and pretrained cases
+  if policy_type == "default":
+    env_spec = StateActionSpec(env.action_space, env.observation_space)
+    return MLP(env_spec, hidden_sizes=(32, 32), seed=config.seed, init_log_std=-1.0)
+  elif policy_type == "pretrained":
+    assert config.models_path is not None
+    return pickle.load(open(config.models_path, 'rb'))
+  elif policy_type == "ppo": # TODO: explicitly cast config
     return PPOBaseline(config, env)
   elif policy_type == "planet":
     return Planet(config, action_size(env), observation_size(env), env.action_space, device)
-
 
 
 class PPOMetrics(Metrics):
@@ -92,7 +103,17 @@ class PPOBaseline:
     pass
 
   def load(self, models_path: str):
+    if os.path.isdir(models_path):
+      paths = glob.glob(os.path.join(models_path, "*.zip"))
+      if len(paths) == 0:
+        raise Exception(f"Failed to load models in {models_path}")
+      else:
+        models_path = sorted(paths)[-1]
+
+    print(f"Loading pre-trained model '{models_path}'")
     self.ppo.load(models_path)
+
+    return models_path
 
   def save(self, models_path: str):
     self.ppo.save(models_path)
@@ -170,7 +191,20 @@ class Planet:
     self.unit_var = torch.ones(config.batch_size, config.state_size, device=self.device)
 
   def load(self, models_path: str):
-    pass
+    if os.path.isdir(models_path):
+      paths = glob.glob(os.path.join(models_path, "*.pt"))
+      if len(paths) == 0:
+        raise Exception(f"Failed to load models in {models_path}")
+      else:
+        models_path = sorted(paths)[-1]
+
+    print(f"Loading pre-trained model '{models_path}'")
+    state_dicts = torch.load(models_path)
+    for k, v in self.models.items():
+      self.models[k].load_state_dict(state_dicts[k])
+
+    return models_path
+
 
   def save(self, models_path: str):
     torch.save({k: v.state_dict() for k, v in self.models.items()}, models_path)

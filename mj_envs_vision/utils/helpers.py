@@ -84,7 +84,7 @@ def save_as_gif(frames: List[np.ndarray], gif_path: str):
     pils.append(Image.fromarray(to_image_frame(frame)))
   pils[0].save(gif_path, append_images=pils, save_all=True, optimize=False, loop=True, duration=len(pils) / 10)
 
-def plot_rewards(rewards: List[Tuple]):
+def plot_rewards(rewards: List[Tuple], yaxis_label="total reward"):
   fig, ax = plt.subplots(1, 1, figsize=(10, 5))
   ep = np.array([x[0] for x in rewards])
   rwd = np.array([x[1] for x in rewards])
@@ -93,13 +93,13 @@ def plot_rewards(rewards: List[Tuple]):
     ax.plot(ep, rwd)
     rwd = rwd.reshape(1, -1)
   else:
-    mu, std, med = np.mean(rwd, axis=1), np.std(rwd, axis=1), np.median(rwd, axis=1)
+    mu, std, med = np.mean(rwd, axis=-1), np.std(rwd, axis=-1), np.median(rwd, axis=-1)
     ax.plot(ep, mu, linestyle='dashed', linewidth=0.3, label="mean")
     ax.plot(ep, med, linestyle='solid', linewidth=0.5, label="median")
     ax.fill_between(ep, mu - std, mu + std, alpha=0.05)
 
   ax.set_xlabel('epochs')
-  ax.set_ylabel(f'total reward n=({rwd.shape[0]})')
+  ax.set_ylabel(f'{yaxis_label} n=({rwd.shape[-1]})')
   ax.legend(loc='upper right')
   return fig
 
