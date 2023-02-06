@@ -14,6 +14,7 @@ from mj_envs_vision.utils.helpers import plot_rewards
 from mj_envs_vision.utils.helpers import make_env
 from mj_envs_vision.utils.helpers import reset, step, observation_size, action_size
 from mj_envs_vision.utils.config import PlanetConfig
+from mj_envs_vision.utils.eval import evaluate
 
 
 PROF = True
@@ -27,41 +28,6 @@ def train(config, experience, policy, optimiser):
 
   return policy.metrics.total_loss() # releases comp graph memory
 
-
-def evaluate(config, policy, count=10):
-  with torch.no_grad():
-    total_rwds = []
-    successes = []
-    trajectories = []
-    for i in range(count): # consider threading?
-      # roll out policy
-      rwd = 0.0
-      success = 0.0
-      traj = []
-      T = make_env(config)
-      obs, _ = reset(T)
-      policy.initialise(**dict(count=1))
-      for t in tqdm(range(config.max_episode_length // config.action_repeat)):
-        action = policy.act(obs.squeeze(dim=0)).squeeze(dim=0).cpu()
-        next_obs, r, done, s = step(T, action)
-        traj.append((obs.squeeze(dim=0), action, r))
-        rwd += r
-        obs = next_obs
-        if s:
-          success += 1
-
-      T.env.close()
-      # record final obs, reward and success rates
-      traj.append((next_obs.squeeze(dim=0), torch.zeros_like(action), r))
-      total_rwds.append(rwd)
-      successes.append(success / config.max_episode_length / config.action_repeat)
-      trajectories.append(traj)
-
-    return total_rwds, successes, trajectories
-
-def save_rewards_fig(rewards, path: str):
-  fig = plot_rewards(rewards)
-  fig.savefig(path)
 
 def train_sb3_policy(config, E, policy, out_dir, device):
   train_time = list()
@@ -104,10 +70,9 @@ def train_sb3_policy(config, E, policy, out_dir, device):
         visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
 
       # TODO: dump metrics to tensorboard
-      save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_reward_loss.png"))
-      save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
-      #save_rewards_fig(exp_successes, os.path.join(out_dir, "train_successes.png"))
-      save_rewards_fig(episode_successes, os.path.join(out_dir, "eval_successes.png"))
+      plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward_loss.png"))
+      plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
+      plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_successes.png"))
 
       # save model
       if ep % config.checkpoint_interval == 0:
@@ -118,10 +83,9 @@ def train_sb3_policy(config, E, policy, out_dir, device):
     print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s")
     print(f"total time:\n\t1.00x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr")
 
-  save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_reward_loss.png"))
-  save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
-  # save_rewards_fig(exp_successes, os.path.join(out_dir, "train_successes.png"))
-  save_rewards_fig(episode_successes, os.path.join(out_dir, "eval_successes.png"))
+  plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward_loss.png"))
+  plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
+  plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_successes.png"))
 
   return exp_rewards, episode_rewards, episode_trajectories
 
@@ -184,10 +148,11 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
         visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
 
       # TODO: dump metrics to tensorboard
-      save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_rewards.png"))
-      save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
-      save_rewards_fig(exp_successes, os.path.join(out_dir, "train_success.png"))
-      save_rewards_fig(episode_successes, os.path.join(out_dir, "eval_success.png"))
+      plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward_loss.png"))
+      plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
+      plot_rewards(exp_successes, "success rate").savefig(os.path.join(out_dir, "train_success.png"))
+      plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_successes.png"))
+
 
     # save model
     if ep % config.checkpoint_interval == 0:
@@ -203,10 +168,10 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
     print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s\n\t{np.median(sim_time): .2f}s")
     print(f"total time:\n\t1.00x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr\n\t{np.sum(sim_time)/np.sum(train_time): .2f}x tr")
 
-  save_rewards_fig(exp_rewards, os.path.join(out_dir, "train_rewards.png"))
-  save_rewards_fig(episode_rewards, os.path.join(out_dir, "eval_rewards.png"))
-  save_rewards_fig(exp_successes, os.path.join(out_dir, "train_success.png"))
-  save_rewards_fig(episode_successes, os.path.join(out_dir, "eval_success.png"))
+  plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward_loss.png"))
+  plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
+  plot_rewards(exp_successes, "success rate").savefig(os.path.join(out_dir, "train_success.png"))
+  plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_successes.png"))
 
   return exp_rewards, episode_rewards, episode_trajectories
 
