@@ -4,9 +4,8 @@ import pickle
 import torch
 from gym.wrappers.time_limit import TimeLimit
 from PIL import Image
-from mjrl.policies.gaussian_mlp import MLP
-from mj_envs_vision.utils.config import Config, PlanetConfig
-from mj_envs_vision.algos.baselines import Planet, PPOBaseline, SUPPORTED_POLICIES
+from mj_envs_vision.utils.config import load_config
+from mj_envs_vision.algos.baselines import make_baseline_policy, SUPPORTED_POLICIES
 from mj_envs_vision.utils.helpers import make_env, action_size, observation_size
 
 max_door_offset = 25 # the number of iterations after which door policy freezes
@@ -27,54 +26,51 @@ USAGE:\n
 @click.option('--seed', type=int, help='seed for generating environment instances', default=123)
 @click.option('--episodes', type=int, help='number of episodes to visualize', default=1)
 @click.option('--save_mode', type=int, default=1, help='flag to save renderings (0=no save, 1=save)')
+@click.option('--var_type', type=str, help='variation type for env parameters {mass, size, pos}', default=None)
 
 
-def main(env_name, policy, mode, seed, episodes, save_mode):
+def main(env_name, policy, mode, seed, episodes, save_mode, var_type):
     # parse policy type
+    config_path = "/home/bilkit/Workspace/mj_envs_vision/mj_envs_vision/utils/mini_config.json"
     if policy is None:
         policy_type = "default"
     elif "planet" in policy and ".pt" in policy:
         policy_type = "planet"
+        config_path = os.path.join(os.path.dirname(policy), "config.json")
+        # TODO: currently can't render and use gui simultaneously
+        # update save mode
+        save_mode = 0 if policy.split('-')[1] == "observation" else 1
+    elif "ppo" in policy and ".zip" in policy:
+        policy_type = "ppo"
+        config_path = os.path.join(os.path.dirname(policy), "config.json")
         # TODO: currently can't render and use gui simultaneously
         # update save mode
         save_mode = 0 if policy.split('-')[1] == "observation" else 1
     else:
         policy_type = "pretrained"
 
-    if save_mode == 0 and os.environ["LD_PRELOAD"] != "":
+    if save_mode == 1 and "LD_PRELOAD" in os.environ and os.environ["LD_PRELOAD"] != "":
         raise Exception("Ensure that EGL is available. Use command 'unset $LD_PRELOAD'.")
 
-    # setup env
-    config = Config()
+    # setup env and policy with default (training) parameters
+    config = load_config(config_path, policy_type)
     config.env_name = env_name
     config.nogui = save_mode == 1
     config.seed = seed
     config.max_episodes = episodes
-    e = make_env(config)
+    config.variation_type = var_type
+    config.state_type = 'vector'
+    config.models_path = policy
 
-    # setup policy
-    if policy_type == "default":
-        config.state_type = 'vector'  # TODO: support for images
-        pi = MLP(e.env_spec, hidden_sizes=(32, 32), seed=seed, init_log_std=-1.0)
-    elif policy_type == "planet":
-        pconfig = PlanetConfig() # TODO: copy ctr
-        for k,v in config.__dict__.items():
-            pconfig.__dict__[k] = v
-        pi = Planet(pconfig, action_size(e), observation_size(e), e.action_space, torch.device(config.device_type))
-        # TODO: move impl
-        #pi.load_models(policy)
-        pi.models = torch.load(policy)
-    elif policy_type == "pretrained":
-        config.state_type = 'vector'  # TODO: support for images
-        pi = pickle.load(open(policy, 'rb'))
-    else:
-        raise Exception(f"Unsupported policy_type: {policy_type}")
+    e = make_env(config)
+    pi = make_baseline_policy(config, policy_type, e, device=torch.device('cpu'))
+    if policy_type != "default" and policy_type != "pretrained":
+        pi.load(policy)
 
     if save_mode == 1:
-        policy_name = policy.split('.')[0].split('/')[-2:]
         record_policy(e, episodes, 'rgb_array', env_name, policy_name='-'.join(policy.split('.')[0].split('/')[-2:]))
     else:
-        if os.path.basename(policy).split('-')[0] in SUPPORTED_POLICIES:
+        if policy is not None and os.path.basename(policy).split('-')[0] in SUPPORTED_POLICIES:
             visualise_policy(e, episodes, env_name, mode, pi)
         else:
             visualise_mlp_policy(e, episodes, env_name, mode, pi)
@@ -99,14 +95,13 @@ def visualise_policy(e, episodes, env_name, mode, pi):
             offset = horizons[env_base_name] / 10
 
         while t < offset:
-            x = torch.FloatTensor(o)
             a_zeros = pi.act(torch.FloatTensor(o))[0] * 0
             e.env.step(a_zeros)
             t = t+1
 
         d = False
         score = 0.0
-        while t < horizons[env_base_name] and d == False:
+        while t < horizons[env_base_name] / 100 and d == False:
             a = pi.act(torch.FloatTensor(o))[0] if mode == 'exploration' else pi.act(torch.FloatTensor(o))[1]['evaluation']
             o, r, d = e.env.step(a)[:3]
             t = t+1
