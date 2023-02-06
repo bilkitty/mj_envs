@@ -14,7 +14,7 @@ import numpy as np
 from tqdm import tqdm
 from mj_envs_vision.utils.helpers import make_env
 from mj_envs_vision.utils.helpers import reset, step
-from mj_envs_vision.utils.helpers import plot_rewards
+from mj_envs_vision.utils.helpers import plot_rewards, visualise_trajectory
 from mj_envs_vision.utils.config import load_config
 from mj_envs_vision.algos.baselines import make_baseline_policy
 
@@ -50,20 +50,22 @@ def evaluate(config, policy, count=10):
 
 
 if __name__ == "__main__":
-  MAX_EPISODES = 2
   if len(sys.argv) == 3:
     config_path = sys.argv[1]
-    policy_type = sys.argv[2] # TODO: policy type should be loaded from config
+    policy_type = sys.argv[2]
+    max_episodes = 20
+  elif len(sys.argv) == 4:
+    config_path = sys.argv[1]
+    policy_type = sys.argv[2]
+    max_episodes = int(sys.argv[3])
   else:
     print("Usage:\n\teval.py [path_to_trained_policy] [policy_type]")
     sys.exit(-1)
 
   # Setup config
   config = load_config(config_path, policy_type)
-  config.max_episodes = MAX_EPISODES
+  config.max_episodes = max_episodes
 
-  np.random.seed(config.seed)
-  torch.manual_seed(config.seed)
   if torch.cuda.is_available() and not config.disable_cuda:
     config.device_type = 'cuda'
     torch.cuda.manual_seed(config.seed)
@@ -74,16 +76,24 @@ if __name__ == "__main__":
   # Load and run policy
   pi = make_baseline_policy(config, policy_type, make_env(config), torch.device(config.device_type))
   models_path = pi.load(config.models_path)
+  out_path = os.path.dirname(models_path)
+  model_name = os.path.basename(models_path).replace('.', '_')
 
   total_rewards = list()
   successes = list()
   for ep in tqdm(range(config.max_episodes)):
+    # reset seeds
+    np.random.seed(config.seed + ep)
+    torch.manual_seed(config.seed + ep)
+    # cuda manual seed?
+
     rwds, succs, trajs = evaluate(config, pi, count=10)
     total_rewards.append((ep, rwds))
     successes.append((ep, succs))
 
-  out_path = os.path.dirname(models_path)
-  model_name = os.path.basename(models_path)
+    if config.state_type == "observation":
+      visualise_trajectory(ep, trajs[-1], out_path)  # select worst
+
   plot_rewards(total_rewards, "total rewards").savefig(os.path.join(out_path, f"{model_name}_eval_rewards.png"))
   plot_rewards(successes, "success rate").savefig(os.path.join(out_path, f"{model_name}_eval_success.png"))
 
