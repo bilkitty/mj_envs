@@ -30,17 +30,61 @@ SUPPORTED_POLICIES = ["default", "dapg", "planet", "ppo"]
 
 def make_baseline_policy(config: Config, policy_type: str, env: Env, device: torch.device):
   assert policy_type in SUPPORTED_POLICIES, f"Unsupported policy type '{policy_type}'"
-  # TODO: support for images in default and dapg cases
   if policy_type == "default":
-    env_spec = StateActionSpec(env.action_space, env.observation_space)
-    return MLP(env_spec, hidden_sizes=(32, 32), seed=config.seed, init_log_std=-1.0)
+    return MLPBaseline(config, env, is_random=True)
   elif policy_type == "dapg":
-    assert config.models_path is not None
-    return pickle.load(open(config.models_path, 'rb'))
+    return MLPBaseline(config, env)
   elif policy_type == "ppo": # TODO: explicitly cast config
     return PPOBaseline(config, env)
   elif policy_type == "planet":
     return Planet(config, action_size(env), observation_size(env), env.action_space, device)
+
+
+class MLPBaseline:
+  def __init__(self, config, custom_env: Env, is_random: bool = False):
+    assert not is_random or (is_random and config.models_path is None), "cannot be random if policy was specified"
+
+    # TODO: support for images
+    self.name = "mlp"
+    self.mlp = None
+    self.is_random = is_random
+    self.seed = config.seed
+    self.env_name = config.env_name
+    self.env_spec = StateActionSpec(custom_env.action_space, custom_env.observation_space)
+    self.observation_shape = custom_env.observation_space.shape
+    self.models_path = config.models_path
+    self.metrics = Metrics()
+
+  def initialise(self, *args, **kwargs):
+    pass
+
+  def set_models_to_eval(self):
+    pass
+
+  def set_models_to_train(self):
+    pass
+
+  def load(self) -> str:
+    if self.is_random:
+      self.mlp = MLP(self.env_spec, hidden_sizes=(32, 32), seed=self.seed, init_log_std=-1.0)
+    else:
+      assert self.models_path is not None
+      self.mlp = pickle.load(open(self.models_path, 'rb'))
+      assert self.observation_shape[-1] == self.mlp.param_shapes[0][-1], "observation is incompatible with model input"
+    return self.models_path
+
+  def save(self, models_path: str):
+    self.models_path = models_path
+    pickle.dump(self.mlp, open(models_path, 'wb'))
+
+  def update(self, sample_batch: List, optimiser):
+    pass
+
+  def act(self, obs: torch.Tensor):
+    return torch.FloatTensor(self.mlp.get_action(obs)[1]['evaluation'])
+
+  def sample_action(self, obs):
+    return torch.FloatTensor(self.mlp.get_action(obs)[0])
 
 
 class PPOMetrics(Metrics):
@@ -71,6 +115,7 @@ class PPOBaseline:
     self.epochs = config.max_episodes
     self.batch_size = config.batch_size
     self.target_kl = None
+    self.models_path = config.models_path
     self.metrics = PPOMetrics()
 
     if config.model_type == "mlp":
@@ -102,7 +147,8 @@ class PPOBaseline:
   def set_models_to_train(self):
     pass
 
-  def load(self, models_path: str):
+  def load(self) -> str:
+    models_path = self.models_path
     if os.path.isdir(models_path):
       paths = glob.glob(os.path.join(models_path, "*.zip"))
       if len(paths) == 0:
@@ -116,6 +162,7 @@ class PPOBaseline:
     return models_path
 
   def save(self, models_path: str):
+    self.models_path = models_path
     self.ppo.save(models_path)
 
   def update(self, sample_batch: List, optimiser):
@@ -161,6 +208,7 @@ class Planet:
     self.action_size = action_size
     self.action_space = action_space
     self.device = device
+    self.models_path = config.models_path
     self.metrics = PlanetMetrics()
     # TODO: track prediction errors + provide reconstructions for vis
     self.initialise()
@@ -190,7 +238,8 @@ class Planet:
     self.zero_mean = torch.zeros(config.batch_size, config.state_size, device=self.device)
     self.unit_var = torch.ones(config.batch_size, config.state_size, device=self.device)
 
-  def load(self, models_path: str):
+  def load(self) -> str:
+    models_path = self.models_path
     if os.path.isdir(models_path):
       paths = glob.glob(os.path.join(models_path, "*.pt"))
       if len(paths) == 0:
@@ -207,6 +256,7 @@ class Planet:
 
 
   def save(self, models_path: str):
+    self.models_path = models_path
     torch.save({k: v.state_dict() for k, v in self.models.items()}, models_path)
 
   def set_models_to_eval(self):
