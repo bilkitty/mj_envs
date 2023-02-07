@@ -49,12 +49,18 @@ def step(env, action):
 
 def make_env(config):
     assert is_valid_env(config.env_name)
-    e = gym_make(config.env_name,
-                 render_mode='rgb_array',
-                 width=64,
-                 height=64,
-                 is_headless=config.nogui,
-                 variation_type=config.variation_type)
+    if is_from_adroit_suite(config.env_name):
+      e = gym_make(config.env_name,
+                   render_mode='rgb_array',
+                   width=64,
+                   height=64,
+                   is_headless=config.nogui,
+                   variation_type=config.variation_type)
+    else:
+      e = gym_make(config.env_name,
+                   render_mode='rgb_array',
+                   width=64,
+                   height=64)
     #e.seed(config.seed)
     if isinstance(e, TimeLimit):
       e = e.env
