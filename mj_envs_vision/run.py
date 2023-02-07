@@ -34,6 +34,7 @@ if __name__ == "__main__":
   # setup log dir
   out_dir = os.path.join("results", f"train_{policy_type}_{config.run_id}")
   os.makedirs(out_dir, exist_ok=True)
+  print(f"saving results to {out_dir}")
 
   np.random.seed(config.seed)
   torch.manual_seed(config.seed)

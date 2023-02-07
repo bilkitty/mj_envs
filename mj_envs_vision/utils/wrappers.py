@@ -1,7 +1,6 @@
 import numpy
 import torch
 from gym import spaces
-from gym import ObservationWrapper
 from gym.wrappers.pixel_observation import PixelObservationWrapper
 from gym.wrappers.step_api_compatibility import StepAPICompatibility
 
@@ -15,36 +14,6 @@ class StateActionSpec:
     self.action_dim = action_space.shape[0]
     self.observation_dim = observation_space.shape[0]
 
-class CustomObservationWrapper(ObservationWrapper):
-  def __init__(self, env, action_repeat=1):
-    env = StepAPICompatibility(env, output_truncation_bool=True) # convert any envs from old ot new api
-    super().__init__(env)
-    self.env_spec = StateActionSpec(env.action_space, env.observation_space)
-    self.action_repeat = action_repeat
-    self.max_episode_length = 200 # TODO: dont hard code
-    self.timer = 0
-
-  def observation(self, obs):
-    return torch.FloatTensor(obs)
-
-  def reset(self):
-    self.timer = 0
-    return super().reset()
-
-  def step(self, action):
-    # execute multiple repeats of action
-    items = super().step(action)
-    obs = items[0]
-    self.timer += 1
-    for i in range(self.action_repeat - 1):
-      i_items = super().step(action)
-      if items[2] == True or i_items[2] == True or self.timer > self.max_episode_length: # check done flag
-        break
-      self.timer += 1
-      obs = i_items[0] # update obs
-      items[1] += i_items[1] # accumulate rewards
-
-    return obs, *items[1:]
 
 class CustomPixelObservationWrapper(PixelObservationWrapper):
   def __init__(self, env, obs_key=PIXELS_KEY, render_kwargs=None, action_repeat=1):

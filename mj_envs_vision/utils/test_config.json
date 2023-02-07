@@ -11,5 +11,6 @@
     "chunk_size" : 50,
     "action_repeat" : 2,
     "model_type" : "mlp",
+    "variation_type" : "",
     "state_type" : "observation"
 }
