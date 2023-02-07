@@ -119,6 +119,10 @@ class HammerEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         elif self.variation_type == "size":
             self.model.geom_size[head_gid, 0] = self.np_random.uniform(low=0.01, high=0.04)
             self.model.geom_size[head_gid, 1] = self.np_random.uniform(low=0.02, high=0.08)
+        elif self.variation_type is None:
+            pass
+        else:
+            raise Exception(f"Unsupported variation type {self.variation_type}")
 
         self.sim.forward()
         if self.is_headless:
