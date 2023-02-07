@@ -6,6 +6,10 @@ from gym.wrappers.pixel_observation import PixelObservationWrapper
 from gym.wrappers.step_api_compatibility import StepAPICompatibility
 
 
+PIXELS_KEY = "pixels"
+STATE_KEY = "state"
+
+
 class StateActionSpec:
   def __init__(self, action_space, observation_space):
     self.action_dim = action_space.shape[0]
@@ -19,6 +23,9 @@ class CustomObservationWrapper(ObservationWrapper):
     self.action_repeat = action_repeat
     self.max_episode_length = 200 # TODO: dont hard code
     self.timer = 0
+
+  def observation(self, obs):
+    return torch.FloatTensor(obs)
 
   def reset(self):
     self.timer = 0
@@ -40,40 +47,47 @@ class CustomObservationWrapper(ObservationWrapper):
     return obs, *items[1:]
 
 class CustomPixelObservationWrapper(PixelObservationWrapper):
-  def __init__(self, env, pixels_only=True, render_kwargs=None, action_repeat=1):
+  def __init__(self, env, obs_key=PIXELS_KEY, render_kwargs=None, action_repeat=1):
     env = StepAPICompatibility(env, output_truncation_bool=True) # convert any envs from old ot new api
-    super().__init__(env, pixels_only, render_kwargs)
+    super().__init__(env, pixels_only=False, render_kwargs=render_kwargs) # TODO: too wasteful to keep both state/pels?
     self.env_spec = StateActionSpec(env.action_space, env.observation_space)
     self.action_repeat = action_repeat
     self.max_episode_length = 200 # TODO: dont hard code
     self.timer = 0
+    self.obs_key = obs_key
 
-    # use pil image format
-    test_obs = super().reset()[0]['pixels']
-    space = super().observation_space['pixels']
+    # if pixels, uses pil image format
+    self.curr_obs = super().reset()[0]
+    space = super().observation_space[obs_key]
     lo = int(space.low_repr) if space.dtype == numpy.integer else 0
     hi = int(space.high_repr) if space.dtype == numpy.integer else 1
     self.observation_space = spaces.Box(
-      shape=test_obs.shape, low=lo, high=hi, dtype=space.dtype
+      shape=self.curr_obs[obs_key].shape, low=lo, high=hi, dtype=space.dtype
     )
 
   def reset(self):
-    # call base class to get pixels
     self.timer = 0
     items = super().reset()
-    return torch.FloatTensor(items[0]['pixels'].copy()), *items[1:]
+    self.curr_obs = items[0]
+    return torch.FloatTensor(self.curr_obs[self.obs_key].copy()), *items[1:]
 
   def step(self, action):
-    # call base class to get pixels & execute multiple repeats of action
+    # execute multiple repeats of action
     items = super().step(action)
-    obs = items[0]
+    self.curr_obs = items[0]
     self.timer += 1
     for i in range(self.action_repeat - 1):
       i_items = super().step(action)
       if items[2] == True or i_items[2] == True or self.timer > self.max_episode_length: # check done flag
         break
       self.timer += 1
-      obs = i_items[0] # update obs
+      self.curr_obs = i_items[0] # update obs
       items[1] += i_items[1] # accumulate rewards
 
-    return torch.FloatTensor(obs['pixels'].copy()), *items[1:]
+    return torch.FloatTensor(self.curr_obs[self.obs_key].copy()), *items[1:]
+
+  def get_pixels(self) -> torch.FloatTensor:
+    return torch.FloatTensor(self.curr_obs[PIXELS_KEY].copy())
+
+  def get_state(self) -> torch.FloatTensor:
+    return torch.FloatTensor(self.curr_obs[STATE_KEY].copy())

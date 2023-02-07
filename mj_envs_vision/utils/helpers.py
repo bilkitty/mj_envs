@@ -1,5 +1,6 @@
 import os
 import mjrl
+import gym
 import numpy as np
 from PIL import Image
 from typing import List, Tuple
@@ -7,7 +8,7 @@ from matplotlib import pyplot as plt
 from gym import make as gym_make
 from gym.wrappers.time_limit import TimeLimit
 from dependencies.PlaNet.env import GYM_ENVS
-from mj_envs_vision.utils.wrappers import CustomObservationWrapper
+from mj_envs_vision.utils.wrappers import STATE_KEY
 from mj_envs_vision.utils.wrappers import CustomPixelObservationWrapper
 
 
@@ -64,10 +65,11 @@ def make_env(config):
     #e.seed(config.seed)
     if isinstance(e, TimeLimit):
       e = e.env
-    if config.state_type == "vector":
-      return CustomObservationWrapper(e)
-    elif config.state_type == "observation":
+    if config.state_type == "observation":
       return CustomPixelObservationWrapper(e)
+    elif config.state_type == "vector":
+      return CustomPixelObservationWrapper(e, obs_key=STATE_KEY)
+      #return CustomObservationWrapper(e)
     else:
       raise Exception(f"Unsupported state type '{config.state_type}'")
 
@@ -121,5 +123,8 @@ def visualise_batch_from_experience(id, config, experience, out_dir):
   batch = experience.sample(min(config.batch_size, experience.idx - 1), min(config.chunk_size, experience.idx - 1))
   save_as_gif(batch[0].reshape(-1, *experience.observations.shape[1:]).cpu().numpy(), os.path.join(out_dir, f'experience_{id}.gif'))
 
-def visualise_trajectory(id, trajectory: List, out_dir):
+def visualise_trajectory(id: int, trajectory: List, out_dir: str):
   save_as_gif([x[0].cpu().numpy() for x in trajectory], os.path.join(out_dir, f'trajectory_{id}.gif'))
+
+def visualise_state_trajectory(id: int, trajectory: List, out_dir: str, env: gym.Env):
+  pass
