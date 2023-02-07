@@ -5,8 +5,8 @@ import torch
 from gym.wrappers.time_limit import TimeLimit
 from PIL import Image
 from mj_envs_vision.utils.config import load_config
-from mj_envs_vision.algos.baselines import make_baseline_policy, SUPPORTED_POLICIES
-from mj_envs_vision.utils.helpers import make_env, action_size, observation_size
+from mj_envs_vision.algos.baselines import make_baseline_policy
+from mj_envs_vision.utils.helpers import make_env, reset, step
 
 max_door_offset = 25 # the number of iterations after which door policy freezes
 horizons = {"door": 2000, "pen": 2000, "relocate": 1000, "hammer": 2000}
@@ -16,6 +16,7 @@ Helper script to visualize policy (in mjrl format).\n
 USAGE:\n
     Visualizes policy on the env\n
     $ python visualize_policy.py --env_name door-v0 \n
+    $ python visualize_policy.py --env_name door-v0 --variation_type pos\n
     $ python visualize_policy.py --env_name door-v0 --policy my_policy.pickle --mode evaluation --episodes 10 \n
 '''
 # MAIN =========================================================
@@ -26,10 +27,10 @@ USAGE:\n
 @click.option('--seed', type=int, help='seed for generating environment instances', default=123)
 @click.option('--episodes', type=int, help='number of episodes to visualize', default=1)
 @click.option('--save_mode', type=int, default=1, help='flag to save renderings (0=no save, 1=save)')
-@click.option('--var_type', type=str, help='variation type for env parameters {mass, size, pos}', default=None)
+@click.option('--variation_type', type=str, help='variation type for env parameters {mass, size, pos}', default=None)
 
 
-def main(env_name, policy, mode, seed, episodes, save_mode, var_type):
+def main(env_name, policy, mode, seed, episodes, save_mode, variation_type):
     # parse policy type
     config_path = "/home/bilkit/Workspace/mj_envs_vision/mj_envs_vision/utils/mini_config.json"
     if policy is None:
@@ -59,7 +60,7 @@ def main(env_name, policy, mode, seed, episodes, save_mode, var_type):
     config.nogui = save_mode == 1
     config.seed = seed
     config.max_episodes = episodes
-    config.variation_type = var_type
+    config.variation_type = variation_type
     config.state_type = 'vector'
     config.models_path = policy
 
@@ -70,10 +71,7 @@ def main(env_name, policy, mode, seed, episodes, save_mode, var_type):
     if save_mode == 1:
         record_policy(e, episodes, 'rgb_array', env_name, policy_name='-'.join(policy.split('.')[0].split('/')[-2:]))
     else:
-        if policy is not None and os.path.basename(policy).split('-')[0] in SUPPORTED_POLICIES:
-            visualise_policy(e, episodes, env_name, mode, pi)
-        else:
-            visualise_mlp_policy(e, episodes, env_name, mode, pi)
+        visualise_policy(e, episodes, env_name, mode, pi)
 
     print(f"done")
 
@@ -83,27 +81,27 @@ def visualise_policy(e, episodes, env_name, mode, pi):
     e.unwrapped.mujoco_render_frames = True
     for ep in range(episodes):
         t = 0
-        o = e.env.reset()
-        if isinstance(o, tuple): o = o[0]
+        o, _ = reset(e)
 
         # NOTE: strangely, task failure on
         # door open when delay is active
         # TODO: source of failure?
-        if 'door' in env_name:
+        if 'door' in env_name or 'hammer' in env_name:
             offset = max_door_offset - 3
         else:
             offset = horizons[env_base_name] / 10
 
-        while t < offset:
-            a_zeros = pi.act(torch.FloatTensor(o))[0] * 0
-            e.env.step(a_zeros)
-            t = t+1
+#        while t < offset:
+#            a_zeros = pi.act(o).squeeze(dim=0) * 0
+#            step(e, a_zeros)
+#            t = t+1
 
         d = False
         score = 0.0
-        while t < horizons[env_base_name] / 100 and d == False:
-            a = pi.act(torch.FloatTensor(o))[0] if mode == 'exploration' else pi.act(torch.FloatTensor(o))[1]['evaluation']
-            o, r, d = e.env.step(a)[:3]
+        while t < horizons[env_base_name] and d == False:
+            a = pi.sample_action(o) if mode == 'exploration' else pi.act(o)
+            a = a.squeeze(dim=0)
+            o, r, d = step(e, a)[:3]
             t = t+1
             score = score + r
         print("Episode score = %f" % score)
@@ -153,6 +151,8 @@ def record_policy(gym_env, n_eps, mode, env_name="unk", policy_name="random", po
 
     # setup env for off-screen rendering
     gym_env.env.mj_viewer_headless_setup()
+
+    print('\033[96m' + f"saving renderings to {results_dir}" + '\033[0m')
 
     # roll out policy for k episodes
     trajectory = []

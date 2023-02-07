@@ -18,7 +18,8 @@ class StateActionSpec:
 class CustomPixelObservationWrapper(PixelObservationWrapper):
   def __init__(self, env, obs_key=PIXELS_KEY, render_kwargs=None, action_repeat=1):
     env = StepAPICompatibility(env, output_truncation_bool=True) # convert any envs from old ot new api
-    super().__init__(env, pixels_only=False, render_kwargs=render_kwargs) # TODO: too wasteful to keep both state/pels?
+    pks = () if render_kwargs is None else ("pixels",)
+    super().__init__(env, pixels_only=False, render_kwargs=render_kwargs, pixel_keys=pks) # TODO: too wasteful to keep both state/pels?
     self.env_spec = StateActionSpec(env.action_space, env.observation_space)
     self.action_repeat = action_repeat
     self.max_episode_length = 200 # TODO: dont hard code

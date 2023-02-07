@@ -81,10 +81,11 @@ class MLPBaseline:
     pass
 
   def act(self, obs: torch.Tensor):
-    return torch.FloatTensor(self.mlp.get_action(obs)[1]['evaluation'])
+    x = self.mlp.get_action(obs.numpy())
+    return torch.FloatTensor(self.mlp.get_action(obs.numpy())[1]['evaluation'])
 
   def sample_action(self, obs):
-    return torch.FloatTensor(self.mlp.get_action(obs)[0])
+    return torch.FloatTensor(self.mlp.get_action(obs.numpy())[0])
 
 
 class PPOMetrics(Metrics):

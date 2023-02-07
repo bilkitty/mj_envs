@@ -80,7 +80,7 @@ if __name__ == "__main__":
   models_path = pi.load()
   out_path = os.path.dirname(models_path)
   model_name = os.path.basename(models_path).replace('.', '_')
-  print(f"saving results to {out_path}")
+  print('\033[96m' + f"saving results to {out_path}" + '\033[0m')
 
   total_rewards = list()
   successes = list()

@@ -50,18 +50,15 @@ def step(env, action):
 
 def make_env(config):
     assert is_valid_env(config.env_name)
+    render_kwargs = dict(render_mode='rgb_array' if config.nogui else 'human', width=64, height=64)
     if is_from_adroit_suite(config.env_name):
       e = gym_make(config.env_name,
-                   render_mode='rgb_array',
-                   width=64,
-                   height=64,
                    is_headless=config.nogui,
-                   variation_type=config.variation_type)
+                   variation_type=config.variation_type,
+                   **render_kwargs)
     else:
       e = gym_make(config.env_name,
-                   render_mode='rgb_array',
-                   width=64,
-                   height=64)
+                   **render_kwargs)
     #e.seed(config.seed)
     if isinstance(e, TimeLimit):
       e = e.env
