@@ -47,7 +47,7 @@ def main(env_name, policy, mode, seed, episodes, save_mode, var_type):
         # update save mode
         save_mode = 0 if policy.split('-')[1] == "observation" else 1
     else:
-        policy_type = "pretrained"
+        policy_type = "dapg"
 
     if save_mode == 1 and "LD_PRELOAD" in os.environ and os.environ["LD_PRELOAD"] != "":
         raise Exception("Ensure that EGL is available. Use command 'unset $LD_PRELOAD'.")
@@ -64,7 +64,7 @@ def main(env_name, policy, mode, seed, episodes, save_mode, var_type):
 
     e = make_env(config)
     pi = make_baseline_policy(config, policy_type, e, device=torch.device('cpu'))
-    if policy_type != "default" and policy_type != "pretrained":
+    if policy_type != "default" and policy_type != "dapg":
         pi.load(policy)
 
     if save_mode == 1:

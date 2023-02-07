@@ -25,16 +25,16 @@ from mj_envs_vision.utils.config import Config
 from mj_envs_vision.utils.wrappers import StateActionSpec
 
 
-SUPPORTED_POLICIES = ["default", "pretrained", "planet", "ppo"]
+SUPPORTED_POLICIES = ["default", "dapg", "planet", "ppo"]
 
 
 def make_baseline_policy(config: Config, policy_type: str, env: Env, device: torch.device):
   assert policy_type in SUPPORTED_POLICIES, f"Unsupported policy type '{policy_type}'"
-  # TODO: support for images in default and pretrained cases
+  # TODO: support for images in default and dapg cases
   if policy_type == "default":
     env_spec = StateActionSpec(env.action_space, env.observation_space)
     return MLP(env_spec, hidden_sizes=(32, 32), seed=config.seed, init_log_std=-1.0)
-  elif policy_type == "pretrained":
+  elif policy_type == "dapg":
     assert config.models_path is not None
     return pickle.load(open(config.models_path, 'rb'))
   elif policy_type == "ppo": # TODO: explicitly cast config
