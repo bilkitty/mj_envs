@@ -1,6 +1,7 @@
 import numpy
 import torch
 from gym import spaces
+from gym import ObservationWrapper
 from gym.wrappers.pixel_observation import PixelObservationWrapper
 from gym.wrappers.step_api_compatibility import StepAPICompatibility
 
@@ -14,12 +15,24 @@ class StateActionSpec:
     self.action_dim = action_space.shape[0]
     self.observation_dim = observation_space.shape[0]
 
+class GuiObservationWrapper(ObservationWrapper):
+  """
+  This basic env wrapper provides consistent api for reset and step
+  while bypassing rendering. It is intended for gui visualisation,
+  not policy optimisation. (different libs are needed for gui vs headless)
+  """
+  def __init__(self, env):
+    env = StepAPICompatibility(env, output_truncation_bool=True) # convert any envs from old ot new api
+    super().__init__(env)
+
+  def observation(self, observation):
+    return torch.FloatTensor(observation)
+
 
 class CustomPixelObservationWrapper(PixelObservationWrapper):
   def __init__(self, env, obs_key=PIXELS_KEY, render_kwargs=None, action_repeat=1):
     env = StepAPICompatibility(env, output_truncation_bool=True) # convert any envs from old ot new api
-    pks = () if render_kwargs is None else ("pixels",)
-    super().__init__(env, pixels_only=False, render_kwargs=render_kwargs, pixel_keys=pks) # TODO: too wasteful to keep both state/pels?
+    super().__init__(env, pixels_only=False, render_kwargs=render_kwargs) #TODO: too wasteful to keep both state/pels?
     self.env_spec = StateActionSpec(env.action_space, env.observation_space)
     self.action_repeat = action_repeat
     self.max_episode_length = 200 # TODO: dont hard code
@@ -41,7 +54,7 @@ class CustomPixelObservationWrapper(PixelObservationWrapper):
     self.curr_obs = items[0]
     return torch.FloatTensor(self.curr_obs[self.obs_key].copy()), *items[1:]
 
-  def step(self, action):
+  def step(self, action: numpy.ndarray):
     # execute multiple repeats of action
     items = super().step(action)
     self.curr_obs = items[0]
