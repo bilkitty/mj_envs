@@ -38,15 +38,9 @@ def main(env_name, policy, mode, seed, episodes, save_mode, variation_type):
     elif "planet" in policy and ".pt" in policy:
         policy_type = "planet"
         config_path = os.path.join(os.path.dirname(policy), "config.json")
-        # TODO: currently can't render and use gui simultaneously
-        # update save mode
-        save_mode = 0 if policy.split('-')[1] == "observation" else 1
     elif "ppo" in policy and ".zip" in policy:
         policy_type = "ppo"
         config_path = os.path.join(os.path.dirname(policy), "config.json")
-        # TODO: currently can't render and use gui simultaneously
-        # update save mode
-        save_mode = 0 if policy.split('-')[1] == "observation" else 1
     else:
         policy_type = "dapg"
         config_path = os.path.join(os.path.dirname(policy), "config.json")
@@ -67,9 +61,8 @@ def main(env_name, policy, mode, seed, episodes, save_mode, variation_type):
     e = make_env(config)
     pi = make_baseline_policy(config, policy_type, e, device=torch.device('cpu'))
     pi.load()
-
     if save_mode == 1:
-        record_policy(e, episodes, 'rgb_array', env_name, policy_name='-'.join(policy.split('.')[0].split('/')[-2:]))
+        record_policy(e, episodes, pi, env_name, policy_name='-'.join(policy.split('.')[0].split('/')[-2:]))
     else:
         visualise_policy(e, episodes, env_name, mode, pi)
 
@@ -91,50 +84,16 @@ def visualise_policy(e, episodes, env_name, mode, pi):
         else:
             offset = horizons[env_base_name] / 10
 
-#        while t < offset:
-#            a_zeros = pi.act(o).squeeze(dim=0) * 0
-#            step(e, a_zeros)
-#            t = t+1
+        while t < offset:
+            a_zeros = pi.sample_action(o) * 0
+            step(e, a_zeros)
+            t = t+1
 
         d = False
         score = 0.0
         while t < horizons[env_base_name] and d == False:
             a = pi.sample_action(o) if mode == 'exploration' else pi.act(o)
-            a = a.squeeze(dim=0)
             o, r, d = step(e, a)[:3]
-            t = t+1
-            score = score + r
-        print("Episode score = %f" % score)
-        # TODO:  prompt for moving on
-    e.unwrapped.mujoco_render_frames = False
-
-
-def visualise_mlp_policy(e, episodes, env_name, mode, pi):
-    env_base_name = env_name.split('-')[0]
-    e.unwrapped.mujoco_render_frames = True
-    for ep in range(episodes):
-        t = 0
-        o = e.env.reset()
-        if isinstance(o, tuple): o = o[0]
-
-        # NOTE: strangely, task failure on
-        # door open when delay is active
-        # TODO: source of failure?
-        if 'door' in env_name:
-            offset = max_door_offset - 3
-        else:
-            offset = horizons[env_base_name] / 10
-
-        while t < offset:
-            a_zeros = pi.get_action(o)[0] * 0
-            e.env.step(a_zeros)
-            t = t+1
-
-        d = False
-        score = 0.0
-        while t < horizons[env_base_name] and d == False:
-            a = pi.get_action(o)[0] if mode == 'exploration' else pi.get_action(o)[1]['evaluation']
-            o, r, d = e.env.step(a)[:3]
             t = t+1
             score = score + r
         print("Episode score = %f" % score)
@@ -144,7 +103,7 @@ def visualise_mlp_policy(e, episodes, env_name, mode, pi):
 
 ENABLE_RESIZE = False
 RESULTS_DIR = '/home/bilkit/Workspace/mj_envs_vision/results'
-def record_policy(gym_env, n_eps, mode, env_name="unk", policy_name="random", policy=None, results_dir=RESULTS_DIR):
+def record_policy(gym_env, n_eps, policy, env_name="unk", policy_name="random", results_dir=RESULTS_DIR):
     # unwrap time limit envs for step
     if isinstance(gym_env.env, TimeLimit):
         gym_env.env = gym_env.env.env
@@ -159,12 +118,12 @@ def record_policy(gym_env, n_eps, mode, env_name="unk", policy_name="random", po
     for k in range(n_eps):
         t = 0
         term = False
-        obs = gym_env.env.reset()
-        trajectory.append([gym_env.env.render(mode, ENABLE_RESIZE)])
+        obs, _ = reset(gym_env)
+        trajectory.append([gym_env.get_pixels().numpy()])
         while t < horizons[env_name.split('-')[0]] and term is False:
-            action = policy.get_action(obs)[0] if policy else gym_env.env.action_space.sample()
-            obs, reward, term = gym_env.env.step(action)[:3]
-            trajectory[-1].append(gym_env.env.render(mode, ENABLE_RESIZE))
+            action = policy.act(obs)
+            obs, reward, term = step(gym_env, action)[:3]
+            trajectory[-1].append(gym_env.get_pixels().numpy())
             t += 1
 
         # inspect the first frame of the first episode
