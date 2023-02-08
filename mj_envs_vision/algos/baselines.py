@@ -68,7 +68,6 @@ class MLPBaseline:
     if self.is_random:
       self.mlp = MLP(self.env_spec, hidden_sizes=(32, 32), seed=self.seed, init_log_std=-1.0)
     else:
-      assert self.models_path is not None
       self.mlp = pickle.load(open(self.models_path, 'rb'))
       assert self.observation_shape[-1] == self.mlp.param_shapes[0][-1], "observation is incompatible with model input"
     return self.models_path
@@ -80,11 +79,10 @@ class MLPBaseline:
   def update(self, sample_batch: List, optimiser):
     pass
 
-  def act(self, obs: torch.Tensor):
-    x = self.mlp.get_action(obs.numpy())
+  def act(self, obs: torch.Tensor) -> torch.FloatTensor:
     return torch.FloatTensor(self.mlp.get_action(obs.numpy())[1]['evaluation'])
 
-  def sample_action(self, obs):
+  def sample_action(self, obs: torch.Tensor) -> torch.FloatTensor:
     return torch.FloatTensor(self.mlp.get_action(obs.numpy())[0])
 
 
@@ -176,11 +174,11 @@ class PPOBaseline:
       self.metrics.n_updates.append(self.ppo.logger.name_to_value['train/n_updates'])
       self.metrics.clip_fraction.append(self.ppo.logger.name_to_value['train/clip_fraction'])
 
-  def act(self, obs: torch.Tensor):
+  def act(self, obs: torch.Tensor) -> torch.FloatTensor:
     action, state = self.ppo.predict(obs.numpy())
     return torch.FloatTensor(action)
 
-  def sample_action(self, obs):
+  def sample_action(self, obs: torch.Tensor) -> torch.FloatTensor:
     a = self.act(obs)
     return a + 0.3 * torch.rand_like(a)
 
@@ -197,6 +195,7 @@ class PlanetMetrics(Metrics):
     return dict(observation_loss=self.observation_loss, reward_loss=self.reward_loss, kl_loss=self.kl_loss)
 
 
+# TODO: fix input incompatibility (ugh)
 class Planet:
   def __init__(self, config, action_size, observation_size, action_space, device):
     self.name = "planet"
@@ -309,7 +308,7 @@ class Planet:
     self.x = torch.zeros(count, self.state_size, device=self.device)
     self.a = torch.zeros(count, self.action_size, device=self.device)
 
-  def act(self, obs: torch.Tensor):
+  def act(self, obs: torch.Tensor) -> torch.FloatTensor:
     # state estimation and fwd prediction
     obs = _images_to_observation(obs.cpu().numpy(), bit_depth=5)
     z = self.models["encoder"](obs.to(self.device)).unsqueeze(dim=0)
@@ -320,7 +319,7 @@ class Planet:
     self.a = self.planner(self.b, self.x)
     return self.a
 
-  def sample_action(self, obs: torch.Tensor):
+  def sample_action(self, obs: torch.Tensor) -> torch.FloatTensor:
     # apply uniform exploration noise
     self.a = self.act(obs) + self.action_noise * torch.rand_like(self.a)
     self.a.clamp_(float(self.action_space.low[0]), float(self.action_space.high[0]))

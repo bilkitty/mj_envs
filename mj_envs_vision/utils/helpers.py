@@ -1,6 +1,7 @@
 import os
 import mjrl
 import gym
+import torch
 import numpy as np
 from PIL import Image
 from typing import List, Tuple
@@ -9,7 +10,7 @@ from gym import make as gym_make
 from gym.wrappers.time_limit import TimeLimit
 from dependencies.PlaNet.env import GYM_ENVS
 from mj_envs_vision.utils.wrappers import STATE_KEY
-from mj_envs_vision.utils.wrappers import CustomPixelObservationWrapper
+from mj_envs_vision.utils.wrappers import CustomPixelObservationWrapper, GuiObservationWrapper
 
 
 GIF_DURATION = 15
@@ -40,17 +41,22 @@ def observation_size(env):
 def reset(env):
   return env.reset()
 
-def step(env, action):
+def step(env, action: torch.FloatTensor):
+  """
+  A helper that ensures the correct type is passed to env step.
+  Note that unexpected behaviour will result if env takes
+  action of type other than numpy.ndarray. (e.g., try dapg policies)
+  """
   if isinstance(env.unwrapped, mjrl.envs.mujoco_env.MujocoEnv):
-    obs, reward, done, success = env.step(action)[:4]
+    obs, reward, done, success = env.step(action.numpy())[:4]
   else:
-    obs, reward, done = env.step(action)[:3]
+    obs, reward, done = env.step(action.numpy())[:3]
     success = False # false = unknown
   return obs, reward, done, success
 
 def make_env(config):
     assert is_valid_env(config.env_name)
-    render_kwargs = dict(render_mode='rgb_array' if config.nogui else 'human', width=64, height=64)
+    render_kwargs = dict(render_mode='rgb_array', width=64, height=64)
     if is_from_adroit_suite(config.env_name):
       e = gym_make(config.env_name,
                    is_headless=config.nogui,
@@ -62,11 +68,13 @@ def make_env(config):
     #e.seed(config.seed)
     if isinstance(e, TimeLimit):
       e = e.env
-    if config.state_type == "observation":
+
+    if not config.nogui:
+      return GuiObservationWrapper(e)
+    elif config.state_type == "observation":
       return CustomPixelObservationWrapper(e)
     elif config.state_type == "vector":
       return CustomPixelObservationWrapper(e, obs_key=STATE_KEY)
-      #return CustomObservationWrapper(e)
     else:
       raise Exception(f"Unsupported state type '{config.state_type}'")
 
