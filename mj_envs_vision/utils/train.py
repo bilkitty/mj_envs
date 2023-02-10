@@ -179,7 +179,7 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
 def collect_experience(config, E, experience, policy):
   with torch.no_grad():
     total_rwd = 0.0
-    success = 0.0
+    success = False
     obs, _ = reset(E)
     policy.initialise(**dict(count=1))
     # roll out policy and update experience
@@ -188,13 +188,9 @@ def collect_experience(config, E, experience, policy):
       next_obs, rwd, done, suc = step(E, action)
       experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
       total_rwd += rwd
+      success |= suc
       obs = next_obs
       #if done: break # less time, but not good idea
-      if suc:
-        success += 1
-
-    # success rate
-    success /= config.max_episode_length / config.action_repeat
 
     return total_rwd, success
 
