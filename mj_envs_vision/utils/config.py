@@ -2,6 +2,7 @@
 # various algorithms, envs, training and test
 # procedures
 import json
+import yaml
 
 
 class Config(json.JSONEncoder):
@@ -97,10 +98,24 @@ class PlanetConfig(Config):
     self.planning_horizon = 12
     self.optimisation_iters = 10
 
+
 class PPOConfig(Config):
   def __init__(self):
     Config.__init__(self)
     self.model_type = "mlp"
+
+
+class DreamerConfig(Config):
+
+  # TODO: pare down and save as yaml in this proj
+  default_config_path = "dependencies/DreamerV2/config/defaults.yaml"
+  def __init__(self):
+    Config.__init__(self)
+    with open(DreamerConfig.default_config_path, 'r') as fp:
+      multi_cfg = yaml.safe_load(fp)
+
+    for att, v in multi_cfg['defaults'].items():
+      self.__dict__[att] = v
 
 
 def load_config(config_path, policy_type):
@@ -108,6 +123,8 @@ def load_config(config_path, policy_type):
     config = PPOConfig()
   elif policy_type == "planet":
     config = PlanetConfig()
+  elif policy_type == "dreamer":
+    config = DreamerConfig()
   else:
     config = Config()
   config.load(config_path)

@@ -20,6 +20,9 @@ class Metrics:
   def __init__(self):
     self.total_return = list()
 
+  def total_loss(self):
+    return dict(loss=0.)
+
 
 # Helpers for gym envs
 def is_from_adroit_suite(env_str: str):

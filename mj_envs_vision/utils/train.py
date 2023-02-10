@@ -7,13 +7,13 @@ from tqdm import tqdm
 from torch import optim
 from dependencies.PlaNet import memory
 from dependencies.PlaNet.env import _images_to_observation
-from mj_envs_vision.algos.baselines import Planet
+from mj_envs_vision.algos.baselines import Planet, Dreamer
 from mj_envs_vision.utils.helpers import visualise_batch_from_experience
 from mj_envs_vision.utils.helpers import visualise_trajectory
 from mj_envs_vision.utils.helpers import plot_rewards
 from mj_envs_vision.utils.helpers import make_env
 from mj_envs_vision.utils.helpers import reset, step, observation_size, action_size
-from mj_envs_vision.utils.config import PlanetConfig
+from mj_envs_vision.utils.config import PlanetConfig, DreamerConfig
 from mj_envs_vision.utils.eval import evaluate
 
 
@@ -118,8 +118,8 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
       rwd, done = 0.0, False
       obs, _ = reset(E)
 
-    action = E.action_space.sample()
-    experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), torch.FloatTensor(action), rwd, done)
+    action = torch.FloatTensor(E.action_space.sample())
+    experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
     obs, rwd, done, _ = step(E, action) # success rate is not given to algos
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
@@ -199,7 +199,8 @@ if __name__ == "__main__":
   import sys
 
   # load user defined parameters
-  config = PlanetConfig()
+  #config = PlanetConfig() # TODO: revert
+  config = DreamerConfig()
   if len(sys.argv) == 1:
     config.load("mj_envs_vision/utils/mini_config.json")
   else:
@@ -225,9 +226,10 @@ if __name__ == "__main__":
   # instantiate env, policy, optimiser
   E = make_env(config)
   device = torch.device(config.device_type)
-  policy = Planet(config, action_size(E), observation_size(E), action_size(E), device)
+  #policy = Planet(config, action_size(E), observation_size(E), E.action_space, device)
+  policy = Dreamer(config, device)
   if config.models_path != "":
-    policy.load_models(config.models_path)
+    policy.load()
   optimiser = optim.Adam(policy.params_list, lr=config.learning_rate, eps=config.adam_epsilon)
   # train policy on target environment
   exp_rewards, episode_rewards, episode_trajectories = train_policy(config,

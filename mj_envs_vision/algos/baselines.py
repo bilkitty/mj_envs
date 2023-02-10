@@ -15,6 +15,7 @@ from stable_baselines3.common.policies import ActorCriticCnnPolicy
 from dependencies.PlaNet import models
 from dependencies.PlaNet.planner import MPCPlanner
 from dependencies.PlaNet.env import _images_to_observation
+from dependencies.DreamerV2.pydreamer.models.dreamer import WorldModel
 
 # TODO: replace these with own generic implementation
 from mjrl.policies.gaussian_mlp import MLP
@@ -195,7 +196,6 @@ class PlanetMetrics(Metrics):
     return dict(observation_loss=self.observation_loss, reward_loss=self.reward_loss, kl_loss=self.kl_loss)
 
 
-# TODO: fix input incompatibility (ugh)
 class Planet:
   def __init__(self, config, action_size, observation_size, action_space, device):
     self.name = "planet"
@@ -323,4 +323,97 @@ class Planet:
     # apply uniform exploration noise
     self.a = self.act(obs) + self.action_noise * torch.rand_like(self.a)
     self.a.clamp_(float(self.action_space.low[0]), float(self.action_space.high[0]))
+    return self.a
+
+
+class Dreamer:
+  def __init__(self, config, device):
+    self.name = "dreamer"
+
+    self.horizon = config.imag_horizon
+    self.grad_clip = config.grad_clip
+    self.batch_size = config.batch_size
+    self.hidden_size = config.hidden_dim
+
+    # TODO: unused params
+    self.action_noise = 3
+    self.action_size = 3
+    self.action_space = None
+    self.device = device
+    self.models_path = config.models_path
+    self.metrics = Metrics() # TODO: update
+    # TODO: track prediction errors + provide reconstructions for vis
+    self.initialise()
+    self.models = dict(wm=WorldModel(config))
+
+    # move models to device and collect parameters
+    self.params_list = list()
+    for m in self.models.values():
+      m.to(device=self.device)
+      self.params_list.extend(list(m.parameters()))
+
+    # initialise policy
+    self.agent = None # TODO: ac
+
+  def load(self) -> str:
+    # TODO: simply use torch save/load (see tools.py ln 177)
+    models_path = self.models_path
+    if os.path.isdir(models_path):
+      paths = glob.glob(os.path.join(models_path, "*.pt"))
+      if len(paths) == 0:
+        raise Exception(f"Failed to load models in {models_path}")
+      else:
+        models_path = sorted(paths)[-1]
+
+    print(f"Loading pre-trained model '{models_path}'")
+    state_dicts = torch.load(models_path)
+    for k, v in self.models.items():
+      self.models[k].load_state_dict(state_dicts[k])
+
+    return models_path
+
+  def save(self, models_path: str):
+    self.models_path = models_path
+    torch.save({k: v.state_dict() for k, v in self.models.items()}, models_path)
+
+  def set_models_to_eval(self):
+    for m in self.models.values(): m.eval()
+
+  def set_models_to_train(self):
+    for m in self.models.values(): m.train()
+
+  def update(self, sample_batch: List, optimiser):
+    assert len(sample_batch) == 4 # TODO: pack/unpack data
+    obs, actions, rewards, not_done = sample_batch # replay buffer outputs obs processed via _images_to_observation
+
+
+    L = F.mse_loss(torch.zeros(3),torch.zeros(3))
+    # TODO: include overshooting
+    #state_prior = torch.distributions.Normal(zero_mean, unit_var)
+    # update models
+    #optimiser.zero_grad()
+    #L.backward()
+    #nn.utils.clip_grad_norm_(self.params_list, self.grad_clip, norm_type=2)
+    #optimiser.step()
+
+    # report losses (also clear mem)
+    #self.metrics.total_return.append(L.item())
+
+  def initialise(self, *args, **kwargs):
+    """ re-initialise generic policy """
+    count = kwargs["count"] if "count" in list(kwargs.keys()) else self.batch_size
+
+  def act(self, obs: torch.Tensor) -> torch.FloatTensor:
+    # state estimation and fwd prediction
+    obs = _images_to_observation(obs.cpu().numpy(), bit_depth=5)
+
+    # action selection
+    #self.a = self.agent(self.b, self.x)
+    self.a = torch.zeros(self.action_size)
+    return torch.FloatTensor(self.a)
+
+  def sample_action(self, obs: torch.Tensor) -> torch.FloatTensor:
+    # apply uniform exploration noise
+    self.a = self.act(obs) + self.action_noise * torch.rand_like(self.a)
+    #self.a.clamp_(float(self.action_space.low[0]), float(self.action_space.high[0]))
     return self.a
