@@ -6,7 +6,7 @@
 # - test on env
 # - test on env variants (ood)
 import torch
-import time
+import click
 import os
 import sys
 import numpy as np
@@ -19,54 +19,18 @@ from mj_envs_vision.utils.helpers import visualise_trajectory
 from mj_envs_vision.utils.config import load_config
 from mj_envs_vision.algos.baselines import make_baseline_policy
 
-def evaluate(config, policy, count=10):
-  with torch.no_grad():
-    total_rwds = []
-    successes = []
-    trajectories = []
-    for i in range(count): # consider threading?
-      rwd = 0.0
-      success = 0.0
-      traj = []
-      T = make_env(config)
-      obs, _ = reset(T)
-      policy.initialise(**dict(count=1))
-      for t in tqdm(range(config.max_episode_length // config.action_repeat)):
-        frame = T.get_pixels().squeeze(dim=0)
-        action = policy.act(obs.squeeze(dim=0)).squeeze(dim=0).cpu()
-        next_obs, r, done, s = step(T, action)
-        traj.append((frame, action, r))
-        rwd += r
-        obs = next_obs
-        if s:
-          success += 1
-
-      # record final obs, reward and success rates
-      traj.append((T.get_pixels().squeeze(dim=0), torch.zeros_like(action), r))
-      total_rwds.append(rwd)
-      successes.append(success / config.max_episode_length / config.action_repeat)
-      trajectories.append(traj)
-      T.env.close()
-
-    return total_rwds, successes, trajectories
+@click.command(help="Policy evaluation\n\nUsage:\n\teval.py --config_path path_to_trained_policy]")
+@click.option('--config_path', type=str, help='environment to load', required=True)
+@click.option('--policy_type', type=str, help='{default, dapg, planet, ppo}', default="default")
+@click.option('--variation_type', type=str, help='{pos, size, mass}', default=None)
+@click.option('--episodes', type=int, help='number of episodes to visualize', default=5)
 
 
-if __name__ == "__main__":
-  if len(sys.argv) == 3:
-    config_path = sys.argv[1]
-    policy_type = sys.argv[2]
-    max_episodes = 20
-  elif len(sys.argv) == 4:
-    config_path = sys.argv[1]
-    policy_type = sys.argv[2]
-    max_episodes = int(sys.argv[3])
-  else:
-    print("Usage:\n\teval.py [path_to_trained_policy] [policy_type]")
-    sys.exit(-1)
-
+def main(config_path, policy_type, episodes, variation_type):
   # Setup config
   config = load_config(config_path, policy_type)
-  config.max_episodes = max_episodes
+  config.max_episodes = episodes
+  config.variation_type = variation_type
 
   if torch.cuda.is_available() and not config.disable_cuda:
     config.device_type = 'cuda'
@@ -79,7 +43,7 @@ if __name__ == "__main__":
   pi = make_baseline_policy(config, policy_type, make_env(config), torch.device(config.device_type))
   models_path = pi.load()
   out_path = os.path.dirname(models_path)
-  model_name = os.path.basename(models_path).replace('.', '_')
+  model_name = os.path.basename(models_path).replace('.', '_') + "_var-" + (variation_type or "fixed")
   print('\033[96m' + f"saving results to {out_path}" + '\033[0m')
 
   total_rewards = list()
@@ -94,13 +58,45 @@ if __name__ == "__main__":
     total_rewards.append((ep, rwds))
     successes.append((ep, succs))
 
-    visualise_trajectory(ep, trajs[-1], out_path)  # select worst
+    visualise_trajectory(ep, trajs[-1], out_path, prefix=model_name)  # select worst
 
   plot_rewards(total_rewards, "total rewards").savefig(os.path.join(out_path, f"{model_name}_eval_rewards.png"))
   plot_rewards(successes, "success rate").savefig(os.path.join(out_path, f"{model_name}_eval_success.png"))
 
   # save performance metrics (TODO: pickle)
 
-  # visualise performance
 
+def evaluate(config, policy, count=10):
+  with torch.no_grad():
+    total_rwds = []
+    successes = []
+    trajectories = []
+    for i in range(count): # consider threading?
+      rwd = 0.0
+      success = False
+      traj = []
+      T = make_env(config)
+      obs, _ = reset(T)
+      policy.initialise(**dict(count=1))
+      for t in tqdm(range(config.max_episode_length // config.action_repeat)):
+        frame = T.get_pixels().squeeze(dim=0)
+        action = policy.act(obs.squeeze(dim=0)).squeeze(dim=0).cpu()
+        next_obs, r, done, s = step(T, action)
+        traj.append((frame, action, r))
+        rwd += r
+        success |= s
+        obs = next_obs
+
+      # record final obs, reward and success rates
+      traj.append((T.get_pixels().squeeze(dim=0), torch.zeros_like(action), r))
+      total_rwds.append(rwd)
+      successes.append(int(success))
+      trajectories.append(traj)
+      T.env.close()
+
+    return total_rwds, successes, trajectories
+
+
+if __name__ == "__main__":
+  main()
   print("done :)")
