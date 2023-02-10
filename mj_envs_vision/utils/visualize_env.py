@@ -2,6 +2,7 @@ import os
 import click
 import pickle
 import torch
+from tqdm import tqdm
 from gym.wrappers.time_limit import TimeLimit
 from PIL import Image
 from mj_envs_vision.utils.config import load_config
@@ -9,7 +10,7 @@ from mj_envs_vision.algos.baselines import make_baseline_policy
 from mj_envs_vision.utils.helpers import make_env, reset, step
 
 max_door_offset = 25 # the number of iterations after which door policy freezes
-horizons = {"door": 2000, "pen": 2000, "relocate": 1000, "hammer": 2000}
+horizons = {"door": 200, "pen": 200, "relocate": 200, "hammer": 200}
 GIF_DURATION = 15
 DESC = '''
 Helper script to visualize policy (in mjrl format).\n
@@ -55,7 +56,9 @@ def main(env_name, policy, mode, seed, episodes, save_mode, variation_type):
     config.seed = seed
     config.max_episodes = episodes
     config.variation_type = variation_type
-    config.state_type = 'vector'
+    #config.state_type = 'vector'
+    config.batch_size = 1
+    config.chunk_size = 1
     config.models_path = policy
 
     e = make_env(config)
@@ -114,24 +117,25 @@ def record_policy(gym_env, n_eps, policy, env_name="unk", policy_name="random", 
     print('\033[96m' + f"saving renderings to {results_dir}" + '\033[0m')
 
     # roll out policy for k episodes
-    trajectory = []
+    env_base_name = env_name.split('-')[0]
     for k in range(n_eps):
         t = 0
-        term = False
         obs, _ = reset(gym_env)
-        trajectory.append([gym_env.get_pixels().numpy()])
-        while t < horizons[env_name.split('-')[0]] and term is False:
+        trajectory = [gym_env.get_pixels().numpy()]
+        for t in tqdm(range(horizons[env_base_name])):
             action = policy.act(obs)
             obs, reward, term = step(gym_env, action)[:3]
-            trajectory[-1].append(gym_env.get_pixels().numpy())
+            trajectory.append(gym_env.get_pixels().numpy())
             t += 1
+            if term:
+                break
 
         # inspect the first frame of the first episode
         # to convert frames to WxHxC
-        if trajectory[0][0].shape[0] == 3:
-            pils = [Image.fromarray(frame.transpose(1, 2, 0).astype('uint8')) for frame in trajectory[-1]]
+        if trajectory[0].shape[0] == 3:
+            pils = [Image.fromarray(frame.transpose(1, 2, 0).astype('uint8')) for frame in trajectory]
         else:
-            pils = [Image.fromarray(frame.astype('uint8')) for frame in trajectory[-1]]
+            pils = [Image.fromarray(frame.astype('uint8')) for frame in trajectory]
         pils[0].save(os.path.join(results_dir, f'visualise_{env_name}_{policy_name}_{k}.gif'),
                      append_images=pils, save_all=True, optimize=False, loop=True, duration=GIF_DURATION)
 

@@ -312,7 +312,7 @@ class Planet:
     # state estimation and fwd prediction
     obs = _images_to_observation(obs.cpu().numpy(), bit_depth=5)
     z = self.models["encoder"](obs.to(self.device)).unsqueeze(dim=0)
-    action = self.a.unsqueeze(dim=0)
+    action = self.a.unsqueeze(dim=0) # 1 x batch_size x a_size
     fwd_pred = self.models["transition"](self.x, action, self.b, z)
     self.b, self.x = fwd_pred[0].squeeze(dim=0), fwd_pred[4].squeeze(dim=0)
     # action selection
