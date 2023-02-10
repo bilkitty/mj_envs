@@ -1,5 +1,6 @@
 dependencies/
 results/
+mj_envs_vision/algos/dapg_pretrained/
 #
 # generic restrictions
 #

@@ -3,6 +3,8 @@
 *.txt
 
 results/*
+mj_envs_vision/algos/dapg_pretrained/*.gif
+mj_envs_vision/algos/dapg_pretrained/*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
