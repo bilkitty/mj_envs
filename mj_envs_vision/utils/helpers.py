@@ -47,11 +47,10 @@ def step(env, action: torch.FloatTensor):
   Note that unexpected behaviour will result if env takes
   action of type other than numpy.ndarray. (e.g., try dapg policies)
   """
-  if isinstance(env.unwrapped, mjrl.envs.mujoco_env.MujocoEnv):
-    obs, reward, done, success = env.step(action.numpy())[:4]
-  else:
-    obs, reward, done = env.step(action.numpy())[:3]
-    success = False # false = unknown
+  res = env.step(action.squeeze(dim=0).numpy())
+  obs, reward, done = res[:3]
+  # since it's undefined, default to success = false for standard gym envs
+  success = res[-1]["goal_achieved"] if isinstance(env.unwrapped, mjrl.envs.mujoco_env.MujocoEnv) else False
   return obs, reward, done, success
 
 def make_env(config):
@@ -128,8 +127,8 @@ def visualise_batch_from_experience(id, config, experience, out_dir):
   batch = experience.sample(min(config.batch_size, experience.idx - 1), min(config.chunk_size, experience.idx - 1))
   save_as_gif(batch[0].reshape(-1, *experience.observations.shape[1:]).cpu().numpy(), os.path.join(out_dir, f'experience_{id}.gif'))
 
-def visualise_trajectory(id: int, trajectory: List, out_dir: str):
-  save_as_gif([x[0].cpu().numpy() for x in trajectory], os.path.join(out_dir, f'trajectory_{id}.gif'))
+def visualise_trajectory(id: int, trajectory: List, out_dir: str, prefix="trajectory"):
+  save_as_gif([x[0].cpu().numpy() for x in trajectory], os.path.join(out_dir, f'{prefix}_{id}.gif'))
 
 def visualise_state_trajectory(id: int, trajectory: List, out_dir: str, env: gym.Env):
   pass
