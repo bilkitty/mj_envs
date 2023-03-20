@@ -2,12 +2,11 @@ import os
 import sys
 import numpy as np
 import torch
-from torch import optim
 from mj_envs_vision.utils.config import load_config
 from mj_envs_vision.utils.train import train_policy
 from mj_envs_vision.utils.train import train_sb3_policy
 from mj_envs_vision.utils.helpers import make_env
-from mj_envs_vision.algos.baselines import make_baseline_policy
+from mj_envs_vision.algos.baselines import make_baseline_policy, make_policy_optimisers
 
 
 if __name__ == "__main__":
@@ -52,12 +51,12 @@ if __name__ == "__main__":
   policy = make_baseline_policy(config, policy_type, E, device)
   if config.models_path != "":
     policy.load(config.models_path)
-  optimiser = optim.Adam(policy.params_list, lr=config.learning_rate, eps=config.adam_epsilon)
+  optimiser = make_policy_optimisers(config, policy_type, policy)
   # train policy on target environment
-  if policy_type == "planet":
-    exp_rewards, episode_rewards, episode_trajectories = train_policy(config, E, policy, optimiser, out_dir, device)
-  else:
+  if policy_type == "ppo":
     exp_rewards, episode_rewards, episode_trajectories = train_sb3_policy(config, E, policy, out_dir, device)
+  else:
+    exp_rewards, episode_rewards, episode_trajectories = train_policy(config, E, policy, optimiser, out_dir, device)
   E.close()
 
   # save (updated) run config (in case of updates)

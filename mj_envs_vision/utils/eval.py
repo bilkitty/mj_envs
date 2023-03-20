@@ -77,7 +77,7 @@ def evaluate(config, policy, count=10):
       traj = []
       T = make_env(config)
       obs, _ = reset(T)
-      policy.initialise(**dict(count=1))
+      policy.reset(**dict(count=1))
       for t in tqdm(range(config.max_episode_length // config.action_repeat)):
         frame = T.get_pixels().squeeze(dim=0)
         action = policy.act(obs.squeeze(dim=0)).squeeze(dim=0).cpu()

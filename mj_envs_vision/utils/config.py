@@ -71,8 +71,7 @@ class Config(json.JSONEncoder):
   def save(self, filepath: str):
     fp = open(filepath, 'w')
     if "json" in filepath:
-        #json.dump(Config().encode(self), fp, indent=2)
-        json.dump(Config(), fp, indent=2)
+        json.dump(Config().encode(self), fp, indent=2)
     else:
       raise Exception("only json configs are supported atm")
 

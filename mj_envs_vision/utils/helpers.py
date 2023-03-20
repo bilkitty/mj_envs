@@ -128,7 +128,9 @@ def plot_rewards(rewards: List[Tuple], yaxis_label="total reward"):
 
 def visualise_batch_from_experience(id, config, experience, out_dir):
   batch = experience.sample(min(config.batch_size, experience.idx - 1), min(config.chunk_size, experience.idx - 1))
-  save_as_gif(batch[0].reshape(-1, *experience.observations.shape[1:]).cpu().numpy(), os.path.join(out_dir, f'experience_{id}.gif'))
+  save_as_gif(batch[0].reshape(-1, *experience.observations.shape[1:]).cpu().numpy(),
+              os.path.join(out_dir, f'experience_{id}.gif'),
+              is_obs=True)
 
 def visualise_trajectory(id: int, trajectory: List, out_dir: str, prefix="trajectory"):
   save_as_gif([x[0].cpu().numpy() for x in trajectory], os.path.join(out_dir, f'{prefix}_{id}.gif'))

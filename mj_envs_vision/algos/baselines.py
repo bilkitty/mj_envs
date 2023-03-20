@@ -5,6 +5,7 @@ import glob
 import torch
 import pickle
 from torch import nn
+from torch import optim
 from torch.nn.parameter import Parameter
 from torch.nn import functional as F
 from torch.distributions import Normal
@@ -12,10 +13,10 @@ from torch.distributions import kl_divergence
 from stable_baselines3.ppo import PPO
 from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.policies import ActorCriticCnnPolicy
-from dependencies.PlaNet import models
+from dependencies.PlaNet import models, memory
 from dependencies.PlaNet.planner import MPCPlanner
 from dependencies.PlaNet.env import _images_to_observation
-from dependencies.DreamerV2.pydreamer.models.dreamer import WorldModel
+from dependencies.DreamerV2.pydreamer.models.dreamer import WorldModel, ActorCritic
 
 # TODO: replace these with own generic implementation
 from mjrl.policies.gaussian_mlp import MLP
@@ -26,7 +27,7 @@ from mj_envs_vision.utils.config import Config
 from mj_envs_vision.utils.wrappers import StateActionSpec
 
 
-SUPPORTED_POLICIES = ["default", "dapg", "planet", "ppo"]
+SUPPORTED_POLICIES = ["default", "dapg", "planet", "ppo", "dreamer"]
 
 
 def make_baseline_policy(config: Config, policy_type: str, env: Env, device: torch.device):
@@ -39,7 +40,20 @@ def make_baseline_policy(config: Config, policy_type: str, env: Env, device: tor
     return PPOBaseline(config, env)
   elif policy_type == "planet":
     return Planet(config, action_size(env), observation_size(env), env.action_space, device)
+  elif policy_type == "dreamer":
+    return Dreamer(config, action_size(env), observation_size(env), device)
 
+def make_policy_optimisers(config: Config, policy_type: str, policy):
+  optims = list()
+  if policy_type == "ppo" or policy_type == "planet":
+    optims.append(optim.Adam(policy.params_list, lr=config.learning_rate, eps=config.adam_epsilon))
+  elif policy_type == "dreamer":
+    optims.append(torch.optim.AdamW(list(policy.agent.actor.parameters()), lr=config.adam_lr_actor, eps=config.adam_eps))
+    optims.append(torch.optim.AdamW(list(policy.agent.critic.parameters()), lr=config.adam_lr_critic, eps=config.adam_eps))
+    optims.append(torch.optim.AdamW(list(policy.worldmodel.parameters()), lr=config.adam_lr, eps=config.adam_eps))
+  else:
+    return list()
+  return optims
 
 class MLPBaseline:
   def __init__(self, config, custom_env: Env, is_random: bool = False):
@@ -55,8 +69,9 @@ class MLPBaseline:
     self.observation_shape = custom_env.observation_space.shape
     self.models_path = config.models_path
     self.metrics = Metrics()
+    self.experience = None
 
-  def initialise(self, *args, **kwargs):
+  def reset(self, *args, **kwargs):
     pass
 
   def set_models_to_eval(self):
@@ -77,7 +92,7 @@ class MLPBaseline:
     self.models_path = models_path
     pickle.dump(self.mlp, open(models_path, 'wb'))
 
-  def update(self, sample_batch: List, optimiser):
+  def update(self, sample_batch: List) -> None: # TODO: update to compute_loss
     pass
 
   def act(self, obs: torch.Tensor) -> torch.FloatTensor:
@@ -134,10 +149,9 @@ class PPOBaseline:
               target_kl=self.target_kl,
               tensorboard_log=config.log_path)
 
-    named_model_parameters = self.ppo.get_parameters()["policy"]
-    self.params_list = [Parameter(v) for k,v in named_model_parameters.items()]
+    self.params_list = [Parameter(torch.zeros(3))] # sb3 internally updates params
 
-  def initialise(self, *args, **kwargs):
+  def reset(self, *args, **kwargs):
     """ re-initialise generic policy """
     pass
 
@@ -165,7 +179,7 @@ class PPOBaseline:
     self.models_path = models_path
     self.ppo.save(models_path)
 
-  def update(self, sample_batch: List, optimiser):
+  def update(self, sample_batch: List) -> None:
     self.ppo.learn(self.n_steps, log_interval=self.log_interval, progress_bar=True)
     if self.ppo.logger.name_to_value and len(self.ppo.logger.name_to_value) > 0:
       self.metrics.value_loss.append(self.ppo.logger.name_to_value['train/value_loss'])
@@ -200,8 +214,8 @@ class Planet:
   def __init__(self, config, action_size, observation_size, action_space, device):
     self.name = "planet"
     self.free_nats = config.free_nats
-    self.grad_clip_norm = config.grad_clip_norm
     self.batch_size = config.batch_size
+    self.chunk_size = config.chunk_size
     self.belief_size = config.belief_size
     self.state_size = config.state_size
     self.action_noise = config.action_noise
@@ -211,11 +225,17 @@ class Planet:
     self.models_path = config.models_path
     self.metrics = PlanetMetrics()
     # TODO: track prediction errors + provide reconstructions for vis
-    self.initialise()
+    self.reset()
     self.models = dict(transition=models.TransitionModel(config.belief_size, config.state_size, action_size, config.hidden_size, config.embedding_size, config.activation_fn),
         observation=models.ObservationModel(config.state_type == "vector", observation_size, config.belief_size, config.state_size, config.embedding_size, config.activation_fn),
         encoder=models.Encoder(config.state_type == "vector", observation_size, config.embedding_size, config.activation_fn),
         reward=models.RewardModel(config.belief_size, config.state_size, config.hidden_size, config.activation_fn))
+    self.experience = memory.ExperienceReplay(config.experience_size,
+                                         config.state_type == "vector",
+                                         observation_size,
+                                         action_size,
+                                         config.bit_depth,
+                                         device)
 
     # move models to device and collect parameters
     self.params_list = list()
@@ -265,10 +285,14 @@ class Planet:
   def set_models_to_train(self):
     for m in self.models.values(): m.train()
 
-  def update(self, sample_batch: List, optimiser):
-    assert len(sample_batch) == 4 # TODO: pack/unpack data
-    obs, actions, rewards, not_done = sample_batch # replay buffer outputs obs processed via _images_to_observation
+  def record_experience(self, obs: torch.Tensor, action: torch.Tensor, rwd: float, done: bool):
+    self.experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
 
+  def update(self) -> None : # TODO: update to compute_loss
+    # sample data iid
+    obs, actions, rewards, not_done = self.experience.sample(self.batch_size, self.chunk_size)
+
+    # update models
     z_gt = expand(self.models["encoder"](flatten_sample(obs[1:])), obs[1:].shape) # embeddings of gt next state
     b0 = torch.zeros(self.batch_size, self.belief_size, device=self.device) # TODO: does this init matter?
     x0 = torch.zeros(self.batch_size, self.state_size, device=self.device)
@@ -290,23 +314,22 @@ class Planet:
     L = l_pixels + l_rewards + l_kl
     # TODO: include overshooting
     #state_prior = torch.distributions.Normal(zero_mean, unit_var)
-    # update models
-    optimiser.zero_grad()
-    L.backward()
-    nn.utils.clip_grad_norm_(self.params_list, self.grad_clip_norm, norm_type=2)
-    optimiser.step()
 
     # report losses (also clear mem)
     self.metrics.kl_loss.append(l_kl.item())
     self.metrics.observation_loss.append(l_pixels.item())
     self.metrics.reward_loss.append(l_rewards.item())
+    return L
 
-  def initialise(self, *args, **kwargs):
+  def reset(self, *args, **kwargs):
     """ re-initialise generic policy """
     count = kwargs["count"] if "count" in list(kwargs.keys()) else self.batch_size
     self.b = torch.zeros(count, self.belief_size, device=self.device) # TODO: does this init matter?
     self.x = torch.zeros(count, self.state_size, device=self.device)
     self.a = torch.zeros(count, self.action_size, device=self.device)
+
+  def clip_grads(self, grad_clip_norm, norm_type):
+    nn.utils.clip_grad_norm_(self.params_list, grad_clip_norm, norm_type)
 
   def act(self, obs: torch.Tensor) -> torch.FloatTensor:
     # state estimation and fwd prediction
@@ -327,36 +350,52 @@ class Planet:
 
 
 class Dreamer:
-  def __init__(self, config, device):
+  """
+  Based on Dreamer-v2 (Hafner et al. 2021)
+  https://github.com/jurgisp/pydreamer
+
+  The point of this implementation is to run the bare bones of dreamer algo.
+  Expect training to take ~1.5 weeks on _?_ tasks. Hopefully not longer...
+  Also, pay attention to memory management in pydreamer...
+  """
+  def __init__(self, cfg, action_size, observation_size, device):
     self.name = "dreamer"
 
-    self.horizon = config.imag_horizon
-    self.grad_clip = config.grad_clip
-    self.batch_size = config.batch_size
-    self.hidden_size = config.hidden_dim
+    self.horizon = cfg.imag_horizon
+    self.grad_clip = cfg.grad_clip
+    self.grad_clip_ac = cfg.grad_clip_ac
+    self.batch_size = cfg.batch_size
+    self.batch_len = cfg.batch_length
+    self.hidden_size = cfg.hidden_dim
 
     # TODO: unused params
     self.action_noise = 3
-    self.action_size = 3
+    self.action_size = action_size
     self.action_space = None
     self.device = device
-    self.models_path = config.models_path
-    self.metrics = Metrics() # TODO: update
+    self.models_path = cfg.models_path
     # TODO: track prediction errors + provide reconstructions for vis
-    self.initialise()
-    self.models = dict(wm=WorldModel(config))
+    self.metrics = Metrics() # TODO: update
+    self.worldmodel = WorldModel(cfg)
+    self.agent = ActorCritic(in_dim=cfg.deter_dim + cfg.stoch_dim * (cfg.stoch_discrete or 1),
+                            out_actions=cfg.action_dim,
+                            layer_norm=cfg.layer_norm,
+                            gamma=cfg.gamma,
+                            lambda_gae=cfg.lambda_gae,
+                            entropy_weight=cfg.entropy,
+                            target_interval=cfg.target_interval,
+                            actor_grad=cfg.actor_grad,
+                            actor_dist=cfg.actor_dist)
+    self.experience = memory.ExperienceReplay(cfg.experience_size,
+                                         cfg.state_type == "vector",
+                                         observation_size,
+                                         action_size,
+                                         cfg.bit_depth,
+                                         device)
 
-    # move models to device and collect parameters
-    self.params_list = list()
-    for m in self.models.values():
-      m.to(device=self.device)
-      self.params_list.extend(list(m.parameters()))
-
-    # initialise policy
-    self.agent = None # TODO: ac
+    self.reset()
 
   def load(self) -> str:
-    # TODO: simply use torch save/load (see tools.py ln 177)
     models_path = self.models_path
     if os.path.isdir(models_path):
       paths = glob.glob(os.path.join(models_path, "*.pt"))
@@ -367,41 +406,56 @@ class Dreamer:
 
     print(f"Loading pre-trained model '{models_path}'")
     state_dicts = torch.load(models_path)
-    for k, v in self.models.items():
-      self.models[k].load_state_dict(state_dicts[k])
+    self.worldmodel.load_state_dict(state_dicts)
 
+    dir, name = os.path.dirname(models_path), os.path.basename(models_path).split('.')[0]
+    self.agent.actor.load_state_dict(torch.load(os.path.join(dir, f"{name}-actor.pt")))
+    self.agent.critic.load_state_dict(torch.load(os.path.join(dir, f"{name}-critic.pt")))
+    self.agent.critic_target.load_state_dict(torch.load(os.path.join(dir, f"{name}-target.pt")))
     return models_path
 
   def save(self, models_path: str):
     self.models_path = models_path
-    torch.save({k: v.state_dict() for k, v in self.models.items()}, models_path)
+    torch.save(self.worldmodel.state_dict(), models_path)
+    dir, name = os.path.dirname(models_path), os.path.basename(models_path).split('.')[0]
+    torch.save(self.agent.actor.state_dict(), os.path.join(dir, f"{name}-actor.pt"))
+    torch.save(self.agent.critic.state_dict(), os.path.join(dir, f"{name}-critic.pt"))
+    torch.save(self.agent.critic_target.state_dict(), os.path.join(dir, f"{name}-target.pt"))
 
   def set_models_to_eval(self):
-    for m in self.models.values(): m.eval()
+    self.worldmodel.eval()
 
   def set_models_to_train(self):
-    for m in self.models.values(): m.train()
+    self.worldmodel.train()
 
-  def update(self, sample_batch: List, optimiser):
-    assert len(sample_batch) == 4 # TODO: pack/unpack data
-    obs, actions, rewards, not_done = sample_batch # replay buffer outputs obs processed via _images_to_observation
+  # TODO: custom memory
+  def record_experience(self, obs: torch.Tensor, action: torch.Tensor, rwd: float, done: bool):
+    self.experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
+
+  def update(self) -> None:
+    obs, actions, rewards, not_done = self.experience.sample(self.batch_size, self.batch_len)
 
 
-    L = F.mse_loss(torch.zeros(3),torch.zeros(3))
+    x = self.worldmodel.decoder.image(torch.zeros(self.batch_size, 3072).to(self.device))
+    L = F.mse_loss(obs, x)
     # TODO: include overshooting
     #state_prior = torch.distributions.Normal(zero_mean, unit_var)
-    # update models
-    #optimiser.zero_grad()
-    #L.backward()
-    #nn.utils.clip_grad_norm_(self.params_list, self.grad_clip, norm_type=2)
-    #optimiser.step()
 
     # report losses (also clear mem)
     #self.metrics.total_return.append(L.item())
 
-  def initialise(self, *args, **kwargs):
+    return L
+
+  def reset(self, *args, **kwargs):
     """ re-initialise generic policy """
+    self.worldmodel.to(device=self.device) # may be unnecessary here
     count = kwargs["count"] if "count" in list(kwargs.keys()) else self.batch_size
+
+  def clip_grads(self, grad_clip_norm, norm_type):
+    #nn.utils.clip_grad_norm_(self.params_list, self.grad_clip, norm_type=2) # TODO: spec norm_type?
+    nn.utils.clip_grad_norm_(self.worldmodel.parameters(), self.grad_clip)
+    nn.utils.clip_grad_norm_(self.agent.actor.parameters(), self.grad_clip or self.grad_clip_ac)
+    nn.utils.clip_grad_norm_(self.agent.critic.parameters(), self.grad_clip or self.grad_clip_ac)
 
   def act(self, obs: torch.Tensor) -> torch.FloatTensor:
     # state estimation and fwd prediction
@@ -409,7 +463,7 @@ class Dreamer:
 
     # action selection
     #self.a = self.agent(self.b, self.x)
-    self.a = torch.zeros(self.action_size)
+    self.a = torch.zeros(self.action_size).unsqueeze(dim=0)
     return torch.FloatTensor(self.a)
 
   def sample_action(self, obs: torch.Tensor) -> torch.FloatTensor:
