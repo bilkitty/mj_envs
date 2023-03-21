@@ -196,7 +196,7 @@ if __name__ == "__main__":
   assert config.chunk_size <= config.max_episode_length // config.action_repeat
 
   # setup
-  out_dir = os.path.join("results", f"train_{config.run_id}")
+  out_dir = os.path.join("results", f"train_{policy_type}_{config.run_id}")
   os.makedirs(out_dir, exist_ok=True)
   print('\033[96m' + f"saving results to {out_dir}" + '\033[0m')
 
@@ -214,7 +214,9 @@ if __name__ == "__main__":
   device = torch.device(config.device_type)
   policy = make_baseline_policy(config, policy_type, E, device)
   if config.models_path != "":
+    assert policy_type in config.models_path
     policy.load()
+
   optimiser = make_policy_optimisers(config, policy_type, policy)
   # TODO: load optimisers
 
