@@ -52,6 +52,8 @@ if __name__ == "__main__":
   if config.models_path != "":
     policy.load(config.models_path)
   optimiser = make_policy_optimisers(config, policy_type, policy)
+  # TODO: load optimisers
+
   # train policy on target environment
   if policy_type == "ppo":
     exp_rewards, episode_rewards, episode_trajectories = train_sb3_policy(config, E, policy, out_dir, device)

@@ -83,7 +83,7 @@ class Config(json.JSONEncoder):
 
   # TODO: get attr?
 
-class PlanetConfig(Config):
+class DefaultPlanetConfig(Config):
   def __init__(self):
     Config.__init__(self)
     self.belief_size = 200
@@ -98,19 +98,19 @@ class PlanetConfig(Config):
     self.optimisation_iters = 10
 
 
-class PPOConfig(Config):
+class DefaultPPOConfig(Config):
   def __init__(self):
     Config.__init__(self)
     self.model_type = "mlp"
 
 
-class DreamerConfig(Config):
+class DefaultDreamerConfig(Config):
 
   # TODO: pare down and save as yaml in this proj
   default_config_path = "dependencies/DreamerV2/config/defaults.yaml"
   def __init__(self):
     Config.__init__(self)
-    with open(DreamerConfig.default_config_path, 'r') as fp:
+    with open(DefaultDreamerConfig.default_config_path, 'r') as fp:
       multi_cfg = yaml.safe_load(fp)
 
     for att, v in multi_cfg['defaults'].items():
@@ -119,13 +119,15 @@ class DreamerConfig(Config):
 
 def load_config(config_path, policy_type):
   if policy_type == "ppo":
-    config = PPOConfig()
+    config = DefaultPPOConfig()
   elif policy_type == "planet":
-    config = PlanetConfig()
+    config = DefaultPlanetConfig()
   elif policy_type == "dreamer":
-    config = DreamerConfig()
+    config = DefaultDreamerConfig()
   else:
     config = Config()
+
+  # Override with config file
   config.load(config_path)
   print(config.str())
 

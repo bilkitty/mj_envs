@@ -23,6 +23,9 @@ class Metrics:
   def total_loss(self):
     return dict(loss=0.)
 
+  def update(self, metric):
+    raise NotImplementedError
+
 
 # Helpers for gym envs
 def is_from_adroit_suite(env_str: str):

@@ -9,7 +9,7 @@ from mj_envs_vision.utils.helpers import visualise_trajectory
 from mj_envs_vision.utils.helpers import plot_rewards
 from mj_envs_vision.utils.helpers import make_env
 from mj_envs_vision.utils.helpers import reset, step, observation_size, action_size
-from mj_envs_vision.utils.config import PlanetConfig, DreamerConfig, Config
+from mj_envs_vision.utils.config import DefaultPlanetConfig, DefaultDreamerConfig, Config
 from mj_envs_vision.utils.eval import evaluate
 from mj_envs_vision.algos.baselines import make_baseline_policy, make_policy_optimisers
 
@@ -183,9 +183,9 @@ if __name__ == "__main__":
     print("Usage: config_fp policy_type")
   policy_type = sys.argv[2]
   if policy_type == "dreamer":
-    config = DreamerConfig()
+    config = DefaultDreamerConfig()
   elif policy_type == "planet":
-    config = PlanetConfig()
+    config = DefaultPlanetConfig()
   else:
     config = Config()
   config.load(sys.argv[1])
@@ -216,6 +216,8 @@ if __name__ == "__main__":
   if config.models_path != "":
     policy.load()
   optimiser = make_policy_optimisers(config, policy_type, policy)
+  # TODO: load optimisers
+
   # train policy on target environment
   exp_rewards, episode_rewards, episode_trajectories = train_policy(config,
                                                                     E,
@@ -226,6 +228,7 @@ if __name__ == "__main__":
   E.close()
 
   # visualise performance
+  # TODO: fix aggregation!!
   plot_rewards(exp_rewards).savefig(os.path.join(out_dir, "train_rewards.png"))
   plot_rewards(episode_rewards).savefig(os.path.join(out_dir, "eval_rewards.png"))
 

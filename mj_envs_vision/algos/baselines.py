@@ -41,6 +41,11 @@ def make_baseline_policy(config: Config, policy_type: str, env: Env, device: tor
   elif policy_type == "planet":
     return Planet(config, action_size(env), observation_size(env), env.action_space, device)
   elif policy_type == "dreamer":
+    config.action_dim = action_size(env) # override config defaults for hand man tasks
+    #config.actor_grad = "dynamics"     # TODO: debug what's going on in a2c.py ln 131
+    #config.actor_dist = "tanh_normal"  # assertion expects no reqs grads on loss_critic
+    config.clip_rewards = "tanh"        # when either policy_loss or policy_entropy don't require grad
+    config.entropy = 1.0e-4             # so, do we need to explicitly set reqs grads to False?
     return Dreamer(config, action_size(env), observation_size(env), device)
 
 def make_policy_optimisers(config: Config, policy_type: str, policy):
@@ -48,6 +53,7 @@ def make_policy_optimisers(config: Config, policy_type: str, policy):
   if policy_type == "ppo" or policy_type == "planet":
     optims.append(optim.Adam(policy.params_list, lr=config.learning_rate, eps=config.adam_epsilon))
   elif policy_type == "dreamer":
+    # NOTE: currently ignoring probe models
     optims.append(torch.optim.AdamW(list(policy.agent.actor.parameters()), lr=config.adam_lr_actor, eps=config.adam_eps))
     optims.append(torch.optim.AdamW(list(policy.agent.critic.parameters()), lr=config.adam_lr_critic, eps=config.adam_eps))
     optims.append(torch.optim.AdamW(list(policy.worldmodel.parameters()), lr=config.adam_lr, eps=config.adam_eps))
@@ -240,7 +246,7 @@ class Planet:
     # move models to device and collect parameters
     self.params_list = list()
     for m in self.models.values():
-      m.to(device=self.device)
+      m.to(self.device)
       self.params_list.extend(list(m.parameters()))
 
     # initialise mpc planner
@@ -323,10 +329,10 @@ class Planet:
 
   def reset(self, *args, **kwargs):
     """ re-initialise generic policy """
-    count = kwargs["count"] if "count" in list(kwargs.keys()) else self.batch_size
-    self.b = torch.zeros(count, self.belief_size, device=self.device) # TODO: does this init matter?
-    self.x = torch.zeros(count, self.state_size, device=self.device)
-    self.a = torch.zeros(count, self.action_size, device=self.device)
+    sample_count = kwargs["count"] if "count" in list(kwargs.keys()) else self.batch_size
+    self.b = torch.zeros(sample_count, self.belief_size, device=self.device)
+    self.x = torch.zeros(sample_count, self.state_size, device=self.device)
+    self.a = torch.zeros(sample_count, self.action_size, device=self.device)
 
   def clip_grads(self, grad_clip_norm, norm_type):
     nn.utils.clip_grad_norm_(self.params_list, grad_clip_norm, norm_type)
@@ -348,6 +354,19 @@ class Planet:
     self.a.clamp_(float(self.action_space.low[0]), float(self.action_space.high[0]))
     return self.a
 
+class DreamerMetrics(Metrics):
+  def __init__(self):
+    Metrics.__init__(self)
+
+  def update(self, metric):
+    for k,v in metric.items():
+      v_ = self.__dict__.get(k)
+      if v_ is None:
+        self.__dict__[k] = [v]
+      else:
+        # TODO: handle batch
+        self.__dict__[k].append(v.cpu().item() if isinstance(v, torch.Tensor) else v)
+
 
 class Dreamer:
   """
@@ -367,15 +386,21 @@ class Dreamer:
     self.batch_size = cfg.batch_size
     self.batch_len = cfg.batch_length
     self.hidden_size = cfg.hidden_dim
+    self.should_keep_state = cfg.keep_state
+    self.ac_grad_mode = cfg.actor_grad
 
-    # TODO: unused params
     self.action_noise = 3
     self.action_size = action_size
+    self.observation_size = observation_size
     self.action_space = None
+    self.state = None
+    self.last_state_pred = None
+    self.input_obs = None # named obs (see apply::preprocessing.py & wrappers.py)
     self.device = device
     self.models_path = cfg.models_path
     # TODO: track prediction errors + provide reconstructions for vis
-    self.metrics = Metrics() # TODO: update
+    self.metrics = DreamerMetrics()
+    assert cfg.action_dim == action_size, "please set actions for dex man"
     self.worldmodel = WorldModel(cfg)
     self.agent = ActorCritic(in_dim=cfg.deter_dim + cfg.stoch_dim * (cfg.stoch_discrete or 1),
                             out_actions=cfg.action_dim,
@@ -429,45 +454,119 @@ class Dreamer:
     self.worldmodel.train()
 
   # TODO: custom memory
-  def record_experience(self, obs: torch.Tensor, action: torch.Tensor, rwd: float, done: bool):
-    self.experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
+  #       see preprocessor.py for expected inputs
+  def record_experience(self, image: torch.Tensor, action: torch.Tensor, rwd: float, done: bool):
+    self.experience.append(_images_to_observation(image.cpu().numpy(), bit_depth=5), action, rwd, done)
 
   def update(self) -> None:
+    #
+    # Collect real samples
+    #
+
+    # dims: (batch, traj, data)
     obs, actions, rewards, not_done = self.experience.sample(self.batch_size, self.batch_len)
+    resets = torch.zeros_like(not_done).bool()
+    resets[:, 0] = True
+    resets = resets.squeeze(2)
+    not_done = not_done.squeeze(2) # TODO: should we flip this for terminal?
+    wm_obs = { "image" : obs, "action" : actions, "reward" : rewards, "terminal" : not_done, "reset" : resets }
+    # TODO: could include 'vecobs'
 
+    #
+    # Predict state
+    #
 
-    x = self.worldmodel.decoder.image(torch.zeros(self.batch_size, 3072).to(self.device))
-    L = F.mse_loss(obs, x)
-    # TODO: include overshooting
-    #state_prior = torch.distributions.Normal(zero_mean, unit_var)
+    predictions = self.worldmodel.training_step(wm_obs, self.state) # TODO: set iwae samples?
+    wm_loss              = predictions[0] # or "loss_model" reconstruction & kl losses and entropies
+    concat_state_preds    = predictions[1] # or "features" collection of concatenated hidden states and pr/po samples
+    state_preds          = predictions[2] # or "states" collection of hidden states and pr/po samples
+    self.last_state_pred = predictions[3] # or "out_state" the last hidden state and prior/posterior sample
+    wm_metrics           = predictions[4] # or "metrics" a dict of ac (added later), reward and other losses
+    self.metrics.update(wm_metrics) # TODO: aggregate!
 
-    # report losses (also clear mem)
-    #self.metrics.total_return.append(L.item())
+    #
+    # Dream (i.e., generate latent trajectory rollouts for policy training)
+    #
 
-    return L
+    # freeze wm in case policy updates depend on dynamics gradients
+    self.worldmodel.requires_grad_(False)
 
-  def reset(self, *args, **kwargs):
+    latents = []
+    actions = []
+    state = tuple(s.reshape((-1,) + s.shape[-1:]) for s in state_preds)
+    for i in range(self.horizon):
+      hz = torch.cat(state, dim=-1)
+      act = self.agent.forward_actor(hz).sample() if self.ac_grad_mode == "reinforce" \
+        else self.agent.forward_actor(hz).rsample()
+      latents.append(hz)
+      actions.append(act)
+      # make forward prediction (note: doesn't propagate grads through wm, see original code for details)
+      _, state = self.worldmodel.core.cell.forward_prior(act, None, state)
+
+    # record last point
+    latents.append(torch.cat(state, dim=-1))
+    latents = torch.stack(latents)
+    actions = torch.stack(actions)
+    rewards = self.worldmodel.decoder.reward.forward(latents).mean
+    terminals = self.worldmodel.decoder.terminal.forward(latents).mean
+
+    # unfreeze wm
+    self.worldmodel.requires_grad_(True)
+
+    #
+    # Policy iteration on latent rollouts
+    #
+
+    ac_loss, ac_metrics, _ = self.agent.training_step(latents.detach(),
+                                                      actions.detach(),
+                                                      rewards.detach(),
+                                                      terminals.detach())
+    self.metrics.update(ac_metrics)
+
+    # optionally update state
+    self.state = self.last_state_pred if self.should_keep_state else self.worldmodel.init_state(self.batch_size)
+
+    return wm_loss + ac_loss[0] + ac_loss[1]
+
+  def reset(self, *args, **kwargs): # TODO: move up
     """ re-initialise generic policy """
-    self.worldmodel.to(device=self.device) # may be unnecessary here
-    count = kwargs["count"] if "count" in list(kwargs.keys()) else self.batch_size
+    sample_count = kwargs["count"] if "count" in list(kwargs.keys()) else self.batch_size
+    self.input_obs = dict(image=torch.zeros(sample_count, 1, self.observation_size).to(self.device),
+                         action=torch.zeros(sample_count, 1, self.action_size).to(self.device),
+                         reset=torch.zeros(sample_count, 1).bool().to(self.device), # (batch_size, batch_len, 0-dim)
+                         reward=torch.ones(sample_count, 1) * -float('inf'),        # unused & 0-dim
+                         terminal=torch.zeros(sample_count, 1) * -float('inf'))     # unused & 0-dim
+    self.state = self.worldmodel.init_state(sample_count)
+    self.worldmodel.to(self.device) # may be unnecessary here
+    self.agent.to(self.device)
 
   def clip_grads(self, grad_clip_norm, norm_type):
     #nn.utils.clip_grad_norm_(self.params_list, self.grad_clip, norm_type=2) # TODO: spec norm_type?
     nn.utils.clip_grad_norm_(self.worldmodel.parameters(), self.grad_clip)
-    nn.utils.clip_grad_norm_(self.agent.actor.parameters(), self.grad_clip or self.grad_clip_ac)
-    nn.utils.clip_grad_norm_(self.agent.critic.parameters(), self.grad_clip or self.grad_clip_ac)
+    nn.utils.clip_grad_norm_(self.agent.actor.parameters(), self.grad_clip_ac or self.grad_clip)
+    nn.utils.clip_grad_norm_(self.agent.critic.parameters(), self.grad_clip_ac or self.grad_clip)
 
   def act(self, obs: torch.Tensor) -> torch.FloatTensor:
-    # state estimation and fwd prediction
-    obs = _images_to_observation(obs.cpu().numpy(), bit_depth=5)
+
+    # state estimation
+    self.input_obs["image"] = _images_to_observation(obs.cpu().numpy(), bit_depth=5).unsqueeze(0).to(self.device)
+    # TODO: should this be open-loop?
+    concat_state_preds, self.last_state_pred = self.worldmodel.forward(self.input_obs, self.state) # TODO: set iwae samples?
 
     # action selection
-    #self.a = self.agent(self.b, self.x)
-    self.a = torch.zeros(self.action_size).unsqueeze(dim=0)
-    return torch.FloatTensor(self.a)
+    pi = self.agent.forward_actor(concat_state_preds)
+    val = self.agent.forward_value(concat_state_preds)
+    action = pi.sample().squeeze(0)
+    val = val.squeeze(0)
+    self.input_obs["action"] = action
+    # TODO: ensure that alignments are consistent with other metrics? consider timestamping?
+    self.metrics.update(dict(entropy=pi.entropy().mean().item(), aprob=pi.log_prob(action).exp().mean().item()))
+    return action.squeeze(0)
 
   def sample_action(self, obs: torch.Tensor) -> torch.FloatTensor:
+    action = self.act(obs)
     # apply uniform exploration noise
-    self.a = self.act(obs) + self.action_noise * torch.rand_like(self.a)
-    #self.a.clamp_(float(self.action_space.low[0]), float(self.action_space.high[0]))
-    return self.a
+    action += self.action_noise * torch.rand_like(action).to(self.device)
+    self.input_obs["action"] = action.unsqueeze(0)
+    #a.clamp_(float(self.action_space.low[0]), float(self.action_space.high[0]))
+    return action
