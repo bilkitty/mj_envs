@@ -106,8 +106,8 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
 
     if PROF: tns = time.time_ns()
     train_reward, train_successes = collect_experience(E, policy, n_samples)
-    exp_rewards.append((ep, train_reward))
-    exp_successes.append((ep, train_successes))
+    exp_rewards.append((ep, [train_reward]))
+    exp_successes.append((ep, [train_successes]))
     if PROF: sim_time.append(time.time_ns() - tns)
 
     if ep % config.test_interval == 0:
