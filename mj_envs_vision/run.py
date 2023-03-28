@@ -38,7 +38,6 @@ if __name__ == "__main__":
   np.random.seed(config.seed)
   torch.manual_seed(config.seed)
   if torch.cuda.is_available() and not config.disable_cuda:
-    config.device_type = 'cuda'
     torch.cuda.manual_seed(config.seed)
   else:
     config.device_type = 'cpu'

@@ -20,7 +20,7 @@ PROF = True
 def train(config, policy, optimiser):
   for t in range(config.sample_iters):
     L = policy.update()
-    for opt in optimiser: opt.zero_grad()
+    for opt in optimiser: opt.zero_grad(set_to_none=True)
     L.backward()
     policy.clip_grads(config.grad_clip_norm, norm_type=2)
     for opt in optimiser: opt.step()
