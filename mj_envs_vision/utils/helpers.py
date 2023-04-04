@@ -17,13 +17,15 @@ GIF_DURATION = 15
 
 
 class Metrics:
-  def __init__(self):
-    self.total_return = list()
+  def items(self) -> dict:
+    return self.__dict__.copy()
 
-  def total_loss(self):
-    return dict(loss=0.)
-
-  def update(self, metric):
+  def update(self, metric: dict) -> None:
+    """
+    Imports values from input dictionary. If values are of type torch.Tensor,
+    make sure to call .item() or .tolist() to move them to cpu. This is not
+    performant, but will save memory.
+    """
     raise NotImplementedError
 
 

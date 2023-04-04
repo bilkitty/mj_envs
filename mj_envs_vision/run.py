@@ -1,7 +1,9 @@
 import os
 import sys
-import numpy as np
+import json
 import torch
+import numpy as np
+import pickle as pkl
 from mj_envs_vision.utils.config import load_config
 from mj_envs_vision.utils.train import train_policy
 from mj_envs_vision.utils.train import train_sb3_policy
@@ -57,20 +59,20 @@ if __name__ == "__main__":
 
   # train policy on target environment
   if policy_type == "ppo":
-    exp_rewards, episode_rewards, episode_trajectories = train_sb3_policy(config, E, policy, out_dir, device)
+    exp_rewards, episode_rewards, train_metrics, episode_trajectories = train_sb3_policy(config, E, policy, out_dir, device)
   else:
-    exp_rewards, episode_rewards, episode_trajectories = train_policy(config, E, policy, optimiser, out_dir, device)
+    exp_rewards, episode_rewards, train_metrics, episode_trajectories = train_policy(config, E, policy, optimiser, out_dir, device)
   E.close()
 
   # save (updated) run config (in case of updates)
   config.models_path = out_dir
   config.save(os.path.join(out_dir, "config.json"))
 
-  # save performance metrics (TODO: pickle)
-
-  # visualise performance
-
-  # TODO: plot metrics
-  # TODO: save perf to txt
+  # save performance metrics
+  summary_metrics = {k:v[::config.sample_iters*config.checkpoint_interval] for k,v in train_metrics.items()}
+  json.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.json"), "w"))
+  pkl.dump(train_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
+  pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
+  pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
 
   print("done :)")

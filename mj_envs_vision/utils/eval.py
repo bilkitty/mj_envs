@@ -1,15 +1,14 @@
 # todo:
 # - training perf
 # - eval perf
-# - dump metrics to pkl
 #
 # - test on env
 # - test on env variants (ood)
 import torch
 import click
 import os
-import sys
 import numpy as np
+import pickle as pkl
 
 from tqdm import tqdm
 from mj_envs_vision.utils.helpers import make_env
@@ -63,7 +62,8 @@ def main(config_path, policy_type, episodes, variation_type):
   plot_rewards(total_rewards, "total rewards").savefig(os.path.join(out_path, f"{model_name}_eval_rewards.png"))
   plot_rewards(successes, "success rate").savefig(os.path.join(out_path, f"{model_name}_eval_success.png"))
 
-  # save performance metrics (TODO: pickle)
+  # save performance metrics
+  pkl.dump(total_rewards, open(os.path.join(out_path, "eval_rewards.pkl"), "wb"))
 
 
 def evaluate(config, policy, count=10):

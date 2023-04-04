@@ -118,11 +118,6 @@ class PPOMetrics(Metrics):
     self.n_updates = list()
     self.clip_fraction = list()
 
-  def total_loss(self):
-    return dict(policy_gradient_loss=self.policy_gradient_loss,
-                value_loss=self.value_loss,
-                entropy_loss=self.entropy_loss,
-                approx_kl=self.approx_kl)
 
 class PPOBaseline:
   def __init__(self, config, custom_env: Env):
@@ -209,11 +204,12 @@ class PlanetMetrics(Metrics):
     self.observation_loss = list()
     self.reward_loss = list()
     self.kl_loss = list()
-    self.time = list()
 
-  def total_loss(self):
-    return dict(observation_loss=self.observation_loss, reward_loss=self.reward_loss, kl_loss=self.kl_loss)
-
+  def update(self, metric: dict[str, torch.Tensor], should_clear: bool = False):
+    for k,v in metric.items():
+      if self.__dict__.get(k) is None:
+        self.__dict__[k] = list()
+      self.__dict__[k].extend([v.item()] if len(v.shape) == 0 else v.tolist())
 
 class Planet:
   def __init__(self, config, action_size, observation_size, action_space, device):
@@ -321,9 +317,7 @@ class Planet:
     #state_prior = torch.distributions.Normal(zero_mean, unit_var)
 
     # report losses (also clear mem)
-    self.metrics.kl_loss.append(l_kl.item())
-    self.metrics.observation_loss.append(l_pixels.item())
-    self.metrics.reward_loss.append(l_rewards.item())
+    self.metrics.update(dict(kl_loss=l_kl, observation_loss=l_pixels, reward_loss=l_rewards))
     return L
 
   def reset(self, *args, **kwargs):
@@ -357,14 +351,11 @@ class DreamerMetrics(Metrics):
   def __init__(self):
     Metrics.__init__(self)
 
-  def update(self, metric):
+  def update(self, metric: dict[str, torch.Tensor], should_clear: bool = False):
     for k,v in metric.items():
-      v_ = self.__dict__.get(k)
-      if v_ is None:
-        self.__dict__[k] = [v]
-      else:
-        # TODO: handle batch
-        self.__dict__[k].append(v.cpu().item() if isinstance(v, torch.Tensor) else v)
+      if self.__dict__.get(k) is None:
+        self.__dict__[k] = list()
+      self.__dict__[k].extend([v.item()] if len(v.shape) == 0 else v.tolist())
 
 
 class Dreamer:
@@ -492,15 +483,24 @@ class Dreamer:
 
     latents = []
     actions = []
+    entropies = []
+    log_probs = []
     state = tuple(s.reshape((-1,) + s.shape[-1:]) for s in state_preds)
     for i in range(self.horizon):
       hz = torch.cat(state, dim=-1)
-      act = self.agent.forward_actor(hz).sample() if self.ac_grad_mode == "reinforce" \
-        else self.agent.forward_actor(hz).rsample()
+      pi, val = self.agent.forward_actor(hz), self.agent.forward_actor(hz)
+      act = pi.sample() if self.ac_grad_mode == "reinforce" \
+        else val.rsample()
       latents.append(hz)
       actions.append(act)
+      entropies.append(pi.entropy())
+      log_probs.append(pi.log_prob(act).exp())
       # make forward prediction (note: doesn't propagate grads through wm, see original code for details)
       _, state = self.worldmodel.core.cell.forward_prior(act, None, state)
+
+
+    self.metrics.update(dict(entropy=torch.mean(torch.stack(entropies), dim=0).unsqueeze(0),
+                             aprob=torch.mean(torch.stack(log_probs), dim=0).unsqueeze(0)))
 
     # record last point
     latents.append(torch.cat(state, dim=-1))
@@ -558,8 +558,6 @@ class Dreamer:
     action = pi.sample().squeeze(0)
     val = val.squeeze(0)
     self.input_obs["action"] = action
-    # TODO: ensure that alignments are consistent with other metrics? consider timestamping?
-    self.metrics.update(dict(entropy=pi.entropy().mean().item(), aprob=pi.log_prob(action).exp().mean().item()))
     return action.squeeze(0)
 
   def sample_action(self, obs: torch.Tensor) -> torch.FloatTensor:

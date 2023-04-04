@@ -1,7 +1,9 @@
 import os
 import torch
 import time
+import json
 import numpy as np
+import pickle as pkl
 
 from tqdm import tqdm
 from mj_envs_vision.utils.helpers import visualise_batch_from_experience
@@ -18,14 +20,14 @@ PROF = True
 
 
 def train(config, policy, optimiser):
+  # NOTE: there will be config.sample_iters x (config.max_episodes - config.seed_episodes + 1)
+  # items in policy metrics.
   for t in range(config.sample_iters):
     L = policy.update()
     for opt in optimiser: opt.zero_grad(set_to_none=True)
     L.backward()
     policy.clip_grads(config.grad_clip_norm, norm_type=2)
     for opt in optimiser: opt.step()
-
-  return policy.metrics.total_loss() # releases comp graph memory
 
 
 def train_sb3_policy(config, E, policy, out_dir, device):
@@ -44,7 +46,7 @@ def train_sb3_policy(config, E, policy, out_dir, device):
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)):
     if PROF: tns = time.time_ns()
     policy.update()
-    exp_rewards.append((ep, policy.metrics.total_loss()["value_loss"][-1]))
+    exp_rewards.append((ep, policy.metrics.items()["value_loss"][-1]))
     #exp_successes.append((ep, policy.metrics.total_loss()["success"][-1]))
     if PROF: train_time.append(time.time_ns() - tns)
 
@@ -79,7 +81,7 @@ def train_sb3_policy(config, E, policy, out_dir, device):
   plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
   plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_successes.png"))
 
-  return exp_rewards, episode_rewards, episode_trajectories
+  return exp_rewards, episode_rewards, policy.metrics.items(), episode_trajectories
 
 
 def train_policy(config, E, policy, optimiser, out_dir, device):
@@ -100,7 +102,7 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
     if PROF: tns = time.time_ns()
-    train_metrics = train(config, policy, optimiser)
+    train(config, policy, optimiser)
     if PROF: train_time.append(time.time_ns() - tns)
     # TODO: dump metrics to tensorboard
 
@@ -124,10 +126,10 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
         visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
 
       # TODO: dump metrics to tensorboard
-      plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward_loss.png"))
+      plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_rewards.png"))
       plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
       plot_rewards(exp_successes, "success rate").savefig(os.path.join(out_dir, "train_success.png"))
-      plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_successes.png"))
+      plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_success.png"))
 
 
     # save model
@@ -144,12 +146,12 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
     print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s\n\t{np.median(sim_time): .2f}s")
     print(f"total time:\n\t1.00x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr\n\t{np.sum(sim_time)/np.sum(train_time): .2f}x tr")
 
-  plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward_loss.png"))
+  plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_rewards.png"))
   plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
   plot_rewards(exp_successes, "success rate").savefig(os.path.join(out_dir, "train_success.png"))
-  plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_successes.png"))
+  plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_success.png"))
 
-  return exp_rewards, episode_rewards, episode_trajectories
+  return exp_rewards, episode_rewards, policy.metrics.items(), episode_trajectories
 
 
 def collect_experience(E, policy, sample_count):
@@ -221,7 +223,7 @@ if __name__ == "__main__":
   # TODO: load optimisers
 
   # train policy on target environment
-  exp_rewards, episode_rewards, episode_trajectories = train_policy(config,
+  exp_rewards, episode_rewards, train_metrics, episode_trajectories = train_policy(config,
                                                                     E,
                                                                     policy,
                                                                     optimiser,
@@ -230,8 +232,13 @@ if __name__ == "__main__":
   E.close()
 
   # visualise performance
-  # TODO: fix aggregation!!
   plot_rewards(exp_rewards).savefig(os.path.join(out_dir, "train_rewards.png"))
   plot_rewards(episode_rewards).savefig(os.path.join(out_dir, "eval_rewards.png"))
+
+  summary_metrics = {k:v[::config.sample_iters*config.checkpoint_interval] for k,v in train_metrics.items()}
+  json.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.json"), "w"))
+  pkl.dump(train_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
+  pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
+  pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
 
   print("done :)")
