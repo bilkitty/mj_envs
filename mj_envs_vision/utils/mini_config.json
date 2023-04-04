@@ -12,6 +12,7 @@
     "chunk_size" : 5,
     "action_repeat" : 1,
     "model_type" : "mlp",
+    "device_type" : "cuda",
     "state_type" : "observation",
     "variation_type" : "size"
 }

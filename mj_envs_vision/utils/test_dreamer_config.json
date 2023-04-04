@@ -11,6 +11,7 @@
     "batch_length" : 32,
     "chunk_size" : 32,
     "action_repeat" : 2,
+    "device_type" : "cuda",
     "model_type" : "mlp",
     "state_type" : "observation"
 }

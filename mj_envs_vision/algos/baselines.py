@@ -117,7 +117,6 @@ class PPOMetrics(Metrics):
     self.approx_kl = list()
     self.n_updates = list()
     self.clip_fraction = list()
-    self.time = list()
 
   def total_loss(self):
     return dict(policy_gradient_loss=self.policy_gradient_loss,
@@ -188,12 +187,12 @@ class PPOBaseline:
   def update(self, sample_batch: List) -> None:
     self.ppo.learn(self.n_steps, log_interval=self.log_interval, progress_bar=True)
     if self.ppo.logger.name_to_value and len(self.ppo.logger.name_to_value) > 0:
-      self.metrics.value_loss.append(self.ppo.logger.name_to_value['train/value_loss'])
-      self.metrics.entropy_loss.append(self.ppo.logger.name_to_value['train/entropy_loss'])
-      self.metrics.policy_gradient_loss.append(self.ppo.logger.name_to_value['train/policy_gradient_loss'])
-      self.metrics.approx_kl.append(self.ppo.logger.name_to_value['train/approx_kl'])
+      self.metrics.value_loss.append(float(self.ppo.logger.name_to_value['train/value_loss']))
+      self.metrics.entropy_loss.append(float(self.ppo.logger.name_to_value['train/entropy_loss']))
+      self.metrics.policy_gradient_loss.append(float(self.ppo.logger.name_to_value['train/policy_gradient_loss']))
+      self.metrics.approx_kl.append(float(self.ppo.logger.name_to_value['train/approx_kl']))
       self.metrics.n_updates.append(self.ppo.logger.name_to_value['train/n_updates'])
-      self.metrics.clip_fraction.append(self.ppo.logger.name_to_value['train/clip_fraction'])
+      self.metrics.clip_fraction.append(float(self.ppo.logger.name_to_value['train/clip_fraction']))
 
   def act(self, obs: torch.Tensor) -> torch.FloatTensor:
     action, state = self.ppo.predict(obs.numpy())
