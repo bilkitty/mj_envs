@@ -98,7 +98,7 @@ class MLPBaseline:
     self.models_path = models_path
     pickle.dump(self.mlp, open(models_path, 'wb'))
 
-  def update(self, sample_batch: List) -> None: # TODO: update to compute_loss
+  def update(self) -> None: # TODO: update to compute_loss
     pass
 
   def act(self, obs: torch.Tensor) -> torch.FloatTensor:
@@ -132,6 +132,7 @@ class PPOBaseline:
     self.target_kl = None
     self.models_path = config.models_path
     self.metrics = PPOMetrics()
+    self.experience = None
 
     if config.model_type == "mlp":
       policy_type = ActorCriticPolicy#(observation_space, action_space, lr_schedule=lambda x: 0.0)
@@ -179,7 +180,7 @@ class PPOBaseline:
     self.models_path = models_path
     self.ppo.save(models_path)
 
-  def update(self, sample_batch: List) -> None:
+  def update(self) -> None:
     self.ppo.learn(self.n_steps, log_interval=self.log_interval, progress_bar=True)
     if self.ppo.logger.name_to_value and len(self.ppo.logger.name_to_value) > 0:
       self.metrics.value_loss.append(float(self.ppo.logger.name_to_value['train/value_loss']))

@@ -11,7 +11,7 @@ from mj_envs_vision.utils.helpers import visualise_trajectory
 from mj_envs_vision.utils.helpers import plot_rewards
 from mj_envs_vision.utils.helpers import make_env
 from mj_envs_vision.utils.helpers import reset, step, observation_size, action_size
-from mj_envs_vision.utils.config import DefaultPlanetConfig, DefaultDreamerConfig, Config
+from mj_envs_vision.utils.config import load_config
 from mj_envs_vision.utils.eval import evaluate
 from mj_envs_vision.algos.baselines import make_baseline_policy, make_policy_optimisers
 
@@ -64,9 +64,9 @@ def train_sb3_policy(config, E, policy, out_dir, device):
         visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
 
       # TODO: dump metrics to tensorboard
-      plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward_loss.png"))
+      plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward.png"))
       plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
-      plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_successes.png"))
+      plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_success.png"))
 
       # save model
       if ep % config.checkpoint_interval == 0:
@@ -77,9 +77,9 @@ def train_sb3_policy(config, E, policy, out_dir, device):
     print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s")
     print(f"total time:\n\t1.00x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr")
 
-  plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward_loss.png"))
+  plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward.png"))
   plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
-  plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_successes.png"))
+  plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_success.png"))
 
   return exp_rewards, episode_rewards, policy.metrics.items(), episode_trajectories
 
@@ -184,13 +184,7 @@ if __name__ == "__main__":
   if len(sys.argv) != 2:
     print("Usage: config_fp policy_type")
   policy_type = sys.argv[2]
-  if policy_type == "dreamer":
-    config = DefaultDreamerConfig()
-  elif policy_type == "planet":
-    config = DefaultPlanetConfig()
-  else:
-    config = Config()
-  config.load(sys.argv[1])
+  config = load_config(sys.argv[1], policy_type)
   print(config.str())
 
   # validate params
