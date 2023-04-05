@@ -64,9 +64,9 @@ def train_sb3_policy(config, E, policy, out_dir, device):
         visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
 
       # TODO: dump metrics to tensorboard
-      plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward.png"))
-      plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
-      plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_success.png"))
+      pkl.dump(policy.metrics.items(), open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
+      pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
+      pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
 
       # save model
       if ep % config.checkpoint_interval == 0:
@@ -126,10 +126,9 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
         visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
 
       # TODO: dump metrics to tensorboard
-      plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_rewards.png"))
-      plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
-      plot_rewards(exp_successes, "success rate").savefig(os.path.join(out_dir, "train_success.png"))
-      plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_success.png"))
+      pkl.dump(policy.metrics.items(), open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
+      pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
+      pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
 
 
     # save model
@@ -224,10 +223,6 @@ if __name__ == "__main__":
                                                                     out_dir,
                                                                     device)
   E.close()
-
-  # visualise performance
-  plot_rewards(exp_rewards).savefig(os.path.join(out_dir, "train_rewards.png"))
-  plot_rewards(episode_rewards).savefig(os.path.join(out_dir, "eval_rewards.png"))
 
   summary_metrics = {k:v[::config.sample_iters*config.checkpoint_interval] for k,v in train_metrics.items()}
   json.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.json"), "w"))
