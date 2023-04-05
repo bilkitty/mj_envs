@@ -13,7 +13,7 @@ from mj_envs_vision.utils.wrappers import STATE_KEY
 from mj_envs_vision.utils.wrappers import CustomPixelObservationWrapper, GuiObservationWrapper
 
 
-GIF_DURATION = 15
+DEFAULT_HZ = 30
 
 
 class Metrics:
@@ -101,12 +101,14 @@ def to_input_obs(frame: np.ndarray):
   """ converts image with pels in [0, 255] to image observation with pels in [-0.5, 0.5] for model input """
   return (frame.transpose((2, 0, 1)) / 255 - 0.5).astype('float')
 
-def save_as_gif(frames: List[np.ndarray], gif_path: str, is_obs: bool=False):
+def save_as_gif(frames: List[np.ndarray], gif_path: str, is_obs: bool=False, hz: float=DEFAULT_HZ):
   pils = list()
   for frame in frames:
     frame = to_image_frame(frame) if is_obs else frame.astype('uint8')
     pils.append(Image.fromarray(frame))
-  pils[0].save(gif_path, append_images=pils, save_all=True, optimize=False, loop=True, duration=GIF_DURATION)
+
+  durations = 1/hz * 1000
+  pils[0].save(gif_path, append_images=pils, save_all=True, optimize=False, loop=1, duration=durations)
 
 def plot_rewards(rewards: List[Tuple], yaxis_label="total reward"):
   fig, ax = plt.subplots(1, 1, figsize=(10, 5))
@@ -135,7 +137,8 @@ def visualise_batch_from_experience(id, config, experience, out_dir):
   batch = experience.sample(min(config.batch_size, experience.idx - 1), min(config.chunk_size, experience.idx - 1))
   save_as_gif(batch[0].reshape(-1, *experience.observations.shape[1:]).cpu().numpy(),
               os.path.join(out_dir, f'experience_{id}.gif'),
-              is_obs=True)
+              is_obs=True,
+              hz=1)
 
 def visualise_trajectory(id: int, trajectory: List, out_dir: str, prefix="trajectory"):
   save_as_gif([x[0].cpu().numpy() for x in trajectory], os.path.join(out_dir, f'{prefix}_{id}.gif'))
