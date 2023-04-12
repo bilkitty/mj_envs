@@ -57,6 +57,10 @@ if __name__ == "__main__":
   optimiser = make_policy_optimisers(config, policy_type, policy)
   # TODO: load optimisers
 
+  # save (updated) run config (in case of updates)
+  config.models_path = out_dir
+  config.save(os.path.join(out_dir, "config.json"))
+
   # train policy on target environment
   if policy_type == "ppo":
     exp_rewards, episode_rewards, train_metrics, episode_trajectories = train_sb3_policy(config, E, policy, out_dir, device)
@@ -64,14 +68,11 @@ if __name__ == "__main__":
     exp_rewards, episode_rewards, train_metrics, episode_trajectories = train_policy(config, E, policy, optimiser, out_dir, device)
   E.close()
 
-  # save (updated) run config (in case of updates)
-  config.models_path = out_dir
-  config.save(os.path.join(out_dir, "config.json"))
-
   # save performance metrics
-  summary_metrics = {k:v[::config.sample_iters*config.checkpoint_interval] for k,v in train_metrics.items()}
+  train_metrics = {k:list(np.array(v).reshape(config.sample_iters, -1).mean(axis=0)) for k,v in train_metrics.items()}
+  summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
   json.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.json"), "w"))
-  pkl.dump(train_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
+  pkl.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
   pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
   pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
 

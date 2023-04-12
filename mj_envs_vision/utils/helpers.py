@@ -1,9 +1,10 @@
 import os
 import mjrl
 import gym
+import math
 import torch
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageSequence
 from typing import List, Tuple
 from matplotlib import pyplot as plt
 from gym import make as gym_make
@@ -110,14 +111,30 @@ def save_as_gif(frames: List[np.ndarray], gif_path: str, is_obs: bool=False, hz:
   durations = 1/hz * 1000
   pils[0].save(gif_path, append_images=pils, save_all=True, optimize=False, loop=1, duration=durations)
 
+def grid_gif(gif_path: str, t_sample: int = 1, is_square: bool=True):
+  n = max(2, math.ceil(math.sqrt(t_sample))) if is_square else t_sample
+  m = max(2, math.floor(math.sqrt(t_sample))) if is_square else 1
+  fig, ax = plt.subplots(m, n, figsize=(8, 5))
+  if not is_square: ax = ax.reshape(1, -1)
+  for x in range(0, t_sample):
+    path = gif_path.replace("_0.gif", f"_{x}.gif")
+    assert os.path.exists(path), f"{path}"
+    im = Image.open(path).convert("RGB")
+    ax[x // n, x % n].imshow(im)
+    ax[x // n, x % n].axis('off')
+    ax[x // n, x % n].set_xlabel(f"sample {x}")
+    ax[x // n, x % n].set_box_aspect(1)
+
+  fig.tight_layout(pad=0.2)
+  fig.savefig(gif_path.replace("_0.gif", "_grid.png"))
+
 def plot_rewards(rewards: List[Tuple], yaxis_label="total reward"):
   fig, ax = plt.subplots(1, 1, figsize=(10, 5))
   ep = np.array([x[0] for x in rewards])
   rwd = np.array([x[1] for x in rewards])
-  x = len(rwd.shape)
   if len(rwd.shape) == 1:
     ax.plot(ep, rwd)
-    rwd = rwd.reshape(1, -1)
+    rwd = rwd.reshape(-1, 1)
   else:
     mu, std, med = np.mean(rwd, axis=-1), np.std(rwd, axis=-1), np.median(rwd, axis=-1)
     ax.plot(ep, mu, linestyle='dashed', linewidth=0.3, label="mean")
@@ -127,6 +144,24 @@ def plot_rewards(rewards: List[Tuple], yaxis_label="total reward"):
   ax.set_xlabel('epochs')
   ax.set_ylabel(f'{yaxis_label} n=({rwd.shape[-1]})')
   ax.legend(loc='upper right')
+  ax.set_box_aspect(1)
+  fig.tight_layout(pad=0.2)
+  return fig
+
+def plot_time(timings, max_epoch, y_axis_label="time"):
+  fig = plt.figure(figsize=(10, 5))
+  ax = fig.add_subplot(111)
+  for k,v in timings.items():
+    v = np.array(v)
+    if len(v.shape) > 1:
+      v = np.median(v, axis=0)
+    ax.plot(np.linspace(0, max_epoch, v.shape[0], endpoint=False), v, linestyle='solid', linewidth=1, label=k)
+    ax.scatter(np.linspace(0, max_epoch, v.shape[0], endpoint=False), v, marker='D', s=5)
+  plt.xlabel('epochs')
+  plt.ylabel(y_axis_label)
+  plt.legend(loc='center right', bbox_to_anchor=(1.25, 0.5))
+  ax.set_box_aspect(1)
+  fig.tight_layout(pad=0.2)
   return fig
 
 #

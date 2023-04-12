@@ -102,6 +102,7 @@ class DefaultPPOConfig(Config):
   def __init__(self):
     Config.__init__(self)
     self.model_type = "mlp"
+    self.entropy = 0.0
 
 
 class DefaultDreamerConfig(Config):

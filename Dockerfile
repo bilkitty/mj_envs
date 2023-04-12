@@ -91,5 +91,5 @@ COPY . /mj_envs_vision
 RUN rm -rf dependencies/*
 RUN git clone https://github.com/Kaixhin/PlaNet.git dependencies/PlaNet
 RUN git clone https://github.com/vikashplus/Adroit.git dependencies/Adroit
-RUN git clone https://github.com/jurgisp/pydreamer.git dependencies/DreamerV2
+RUN git clone https://github.com/bilkitty/pydreamer.git dependencies/DreamerV2
 ENTRYPOINT ["python3", "/mj_envs_vision/vendor/Xdummy-entrypoint"]

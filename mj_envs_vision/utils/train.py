@@ -10,7 +10,7 @@ from mj_envs_vision.utils.helpers import visualise_batch_from_experience
 from mj_envs_vision.utils.helpers import visualise_trajectory
 from mj_envs_vision.utils.helpers import plot_rewards
 from mj_envs_vision.utils.helpers import make_env
-from mj_envs_vision.utils.helpers import reset, step, observation_size, action_size
+from mj_envs_vision.utils.helpers import reset, step
 from mj_envs_vision.utils.config import load_config
 from mj_envs_vision.utils.eval import evaluate
 from mj_envs_vision.algos.baselines import make_baseline_policy, make_policy_optimisers
@@ -224,9 +224,10 @@ if __name__ == "__main__":
                                                                     device)
   E.close()
 
-  summary_metrics = {k:v[::config.sample_iters*config.checkpoint_interval] for k,v in train_metrics.items()}
+  train_metrics = {k:list(np.array(v).reshape(config.sample_iters, -1).mean(axis=0)) for k,v in train_metrics.items()}
+  summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
   json.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.json"), "w"))
-  pkl.dump(train_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
+  pkl.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
   pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
   pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
 

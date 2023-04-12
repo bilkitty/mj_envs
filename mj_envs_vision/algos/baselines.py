@@ -42,10 +42,6 @@ def make_baseline_policy(config: Config, policy_type: str, env: Env, device: tor
     return Planet(config, action_size(env), observation_size(env), env.action_space, device)
   elif policy_type == "dreamer":
     config.action_dim = action_size(env) # override config defaults for hand man tasks
-    #config.actor_grad = "dynamics"     # TODO: debug what's going on in a2c.py ln 131
-    #config.actor_dist = "tanh_normal"  # assertion expects no reqs grads on loss_critic
-    config.clip_rewards = "tanh"        # when either policy_loss or policy_entropy don't require grad
-    config.entropy = 1.0e-4             # so, do we need to explicitly set reqs grads to False?
     return Dreamer(config, action_size(env), observation_size(env), device)
 
 def make_policy_optimisers(config: Config, policy_type: str, policy):
@@ -394,7 +390,7 @@ class Dreamer:
     assert cfg.action_dim == action_size, "please set actions for dex man"
     self.worldmodel = WorldModel(cfg)
     self.agent = ActorCritic(in_dim=cfg.deter_dim + cfg.stoch_dim * (cfg.stoch_discrete or 1),
-                            out_actions=cfg.action_dim,
+                            out_actions=cfg.action_dim, #
                             layer_norm=cfg.layer_norm,
                             gamma=cfg.gamma,
                             lambda_gae=cfg.lambda_gae,
@@ -454,7 +450,8 @@ class Dreamer:
     # Collect real samples
     #
 
-    # dims: (batch, traj, data)
+    # Actions are passed to world model as part of observation
+    # obs dims = (batch, traj, data)
     obs, actions, rewards, not_done = self.experience.sample(self.batch_size, self.batch_len)
     resets = torch.zeros_like(not_done).bool()
     resets[:, 0] = True
@@ -485,23 +482,24 @@ class Dreamer:
     latents = []
     actions = []
     entropies = []
-    log_probs = []
+    aprobs = []
     state = tuple(s.reshape((-1,) + s.shape[-1:]) for s in state_preds)
     for i in range(self.horizon):
       hz = torch.cat(state, dim=-1)
-      pi, val = self.agent.forward_actor(hz), self.agent.forward_actor(hz)
-      act = pi.sample() if self.ac_grad_mode == "reinforce" \
-        else val.rsample()
+      pi, val = self.agent.forward_actor(hz), self.agent.forward_value(hz)
+      # use reparameterised sampling for dynamics-only backprop
+      act = pi.sample() if self.ac_grad_mode == "reinforce" else pi.rsample()
       latents.append(hz)
       actions.append(act)
       entropies.append(pi.entropy())
-      log_probs.append(pi.log_prob(act).exp())
+      aprobs.append(pi.log_prob(act).exp())
       # make forward prediction (note: doesn't propagate grads through wm, see original code for details)
       _, state = self.worldmodel.core.cell.forward_prior(act, None, state)
 
 
-    self.metrics.update(dict(entropy=torch.mean(torch.stack(entropies), dim=0).unsqueeze(0),
-                             aprob=torch.mean(torch.stack(log_probs), dim=0).unsqueeze(0)))
+    # aggregate action entropy and probabilities over batch_size x chunk_size
+    self.metrics.update(dict(entropy=torch.stack(entropies).mean().unsqueeze(0),
+                             aprob=torch.stack(aprobs).mean().unsqueeze(0)))
 
     # record last point
     latents.append(torch.cat(state, dim=-1))
@@ -521,6 +519,7 @@ class Dreamer:
                                                       actions.detach(),
                                                       rewards.detach(),
                                                       terminals.detach())
+
     self.metrics.update(ac_metrics)
 
     # optionally update state

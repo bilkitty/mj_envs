@@ -1,10 +1,8 @@
 import os
 import sys
-import torch
 import json
 import numpy as np
 import pickle as pkl
-from PIL import Image
 from typing import List, Tuple
 from matplotlib import pyplot as plt
 from matplotlib import gridspec as gs
@@ -20,7 +18,7 @@ def plot_rewards(ax, rewards: List[Tuple], label: str, color: Tuple[float], yaxi
   rwd = np.array([x[1] for x in rewards])
   if len(rwd.shape) == 1:
     ax.plot(ep, rwd, linestyle='solid', linewidth=2.5, label=label, color=color)
-    rwd = rwd.reshape(1, -1)
+    rwd = rwd.reshape(-1, 1)
   else:
     mu, std, med = np.mean(rwd, axis=-1), np.std(rwd, axis=-1), np.median(rwd, axis=-1)
     ax.plot(ep, mu, linestyle='dashed', linewidth=2.3, color=color)
@@ -40,7 +38,7 @@ def plot_metrics(fig, m_gs, metrics: dict[str, list], label: str, color: Tuple[f
   (labels, yvals) = list(map(list, zip(*metrics.items())))
   for i in range(n):
     y = np.array(yvals[i]).reshape(-1, 1)
-    ep = np.linspace(0, len(y), len(y))
+    ep = np.linspace(0, max_epoch, len(y), endpoint=False)
     ax = fig.add_subplot(ax_gs[i])
 
     ax.plot(ep, y, linestyle='dashed', linewidth=2.3, color=color, label=labels[i])
@@ -62,24 +60,32 @@ if __name__ == "__main__":
     runs = json.load(fp)
 
   out_dir = runs["out_dir"] + '/compare_' + '_'.join(runs["run_names"])
+  out_dir = out_dir.replace(" ", "-")
   print('\033[96m' + f"saving results to {out_dir}" + '\033[0m')
   os.makedirs(out_dir, exist_ok=True)
 
   fig1 = plt.figure(figsize=tuple(runs["d_figure"]))
   grids = gs.GridSpec(len(runs["run_names"]), 1, figure=fig1, height_ratios=runs["proportions"])
-  for i, exp in enumerate(runs["train_metrics_comparison"]):
-    metrics = pkl.load(open(os.path.join(BASE_PATH, exp), 'rb'))
-    plot_metrics(fig1, grids[i], metrics, label=runs["run_names"][i], color=color_cycle[i%10])
+  if "train_metrics_comparison" in runs.keys():
+    for i, exp in enumerate(runs["train_metrics_comparison"]):
+      metrics = pkl.load(open(os.path.join(BASE_PATH, exp), 'rb'))
+      plot_metrics(fig1, grids[i], metrics, label=runs["run_names"][i], color=color_cycle[i%10])
 
   fig2, ax2 = plt.subplots(1, 1, figsize=(10, 5))
-  for i, exp in enumerate(runs["train_comparison"]):
-    rewards = pkl.load(open(os.path.join(BASE_PATH, exp), 'rb'))
-    plot_rewards(ax2, rewards, label=runs["run_names"][i], color=color_cycle[i%10], yaxis_label="train reward")
+  if "train_comparison" in runs.keys():
+    for i, exp in enumerate(runs["train_comparison"]):
+      rewards = pkl.load(open(os.path.join(BASE_PATH, exp), 'rb'))
+      plot_rewards(ax2, rewards, label=runs["run_names"][i], color=color_cycle[i%10], yaxis_label="train reward")
 
   fig3, ax3 = plt.subplots(1, 1, figsize=(10, 5))
-  for i, exp in enumerate(runs["eval_comparison"]):
-    rewards = pkl.load(open(os.path.join(BASE_PATH, exp), 'rb'))
-    plot_rewards(ax3, rewards, label=runs["run_names"][i], color=color_cycle[i%10], yaxis_label="eval reward")
+  if "eval_comparison" in runs.keys():
+    r_constant = np.mean([r[1] for r in pkl.load(open(runs["ref_run"], 'rb'))]) if "ref_run" in runs.keys() else None
+    for i, exp in enumerate(runs["eval_comparison"]):
+      rewards = pkl.load(open(os.path.join(BASE_PATH, exp), 'rb'))
+      if r_constant:
+        rewards = [(r[0], r[1] / r_constant) for r in rewards]
+      plot_rewards(ax3, rewards, label=runs["run_names"][i], color=color_cycle[i%10], yaxis_label="eval reward")
+
 
   fig1.tight_layout(pad=0.2)
   fig2.tight_layout(pad=0.2)

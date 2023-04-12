@@ -20,12 +20,13 @@ from mj_envs_vision.algos.baselines import make_baseline_policy
 
 @click.command(help="Policy evaluation\n\nUsage:\n\teval.py --config_path path_to_trained_policy]")
 @click.option('--config_path', type=str, help='environment to load', required=True)
+@click.option('--out_path', type=str, help='output directory', required=True)
 @click.option('--policy_type', type=str, help='{default, dapg, planet, ppo}', default="default")
 @click.option('--variation_type', type=str, help='{pos, size, mass}', default=None)
 @click.option('--episodes', type=int, help='number of episodes to visualize', default=5)
 
 
-def main(config_path, policy_type, episodes, variation_type):
+def main(config_path, out_path, policy_type, episodes, variation_type):
   # Setup config
   config = load_config(config_path, policy_type)
   config.max_episodes = episodes
@@ -38,10 +39,11 @@ def main(config_path, policy_type, episodes, variation_type):
     config.device_type = 'cpu'
     print('\033[93m' + "\n[WARN] No cuda devices found. Please reboot if on gpu capable machine.\n" + '\033[0m')
 
+  os.makedirs(out_path, exist_ok=True)
+
   # Load and run policy
   pi = make_baseline_policy(config, policy_type, make_env(config), torch.device(config.device_type))
   models_path = pi.load()
-  out_path = os.path.dirname(models_path)
   model_name = os.path.basename(models_path).replace('.', '_') + "_var-" + (variation_type or "fixed")
   print('\033[96m' + f"saving results to {out_path}" + '\033[0m')
 
@@ -64,6 +66,9 @@ def main(config_path, policy_type, episodes, variation_type):
 
   # save performance metrics
   pkl.dump(total_rewards, open(os.path.join(out_path, "eval_rewards.pkl"), "wb"))
+
+  # save config
+  config.save(os.path.join(out_path, "config.json"))
 
 
 def evaluate(config, policy, count=10):
