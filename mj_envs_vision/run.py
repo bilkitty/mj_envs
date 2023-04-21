@@ -63,13 +63,13 @@ if __name__ == "__main__":
 
   # train policy on target environment
   if policy_type == "ppo":
-    exp_rewards, episode_rewards, train_metrics, episode_trajectories = train_sb3_policy(config, E, policy, out_dir, device)
+    results = train_sb3_policy(config, E, policy, out_dir, device)
   else:
-    exp_rewards, episode_rewards, train_metrics, episode_trajectories = train_policy(config, E, policy, optimiser, out_dir, device)
+    results = train_policy(config, E, policy, optimiser, out_dir, device)
   E.close()
 
   # save performance metrics
-  train_metrics = {k:list(np.array(v).reshape(config.sample_iters, -1).mean(axis=0)) for k,v in train_metrics.items()}
+  exp_rewards, episode_rewards, train_metrics = results[:3]
   summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
   json.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.json"), "w"))
   pkl.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))

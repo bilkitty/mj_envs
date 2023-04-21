@@ -3,6 +3,7 @@ import mjrl
 import gym
 import math
 import torch
+import time
 import numpy as np
 from PIL import Image, ImageSequence
 from typing import List, Tuple
@@ -18,8 +19,12 @@ DEFAULT_HZ = 30
 
 
 class Metrics:
+  def __init__(self, group_size=1):
+    self._group_size = group_size
+    self._aggregate_fn = lambda x: list(np.array(x).reshape(self._group_size, -1).mean(axis=0))
+
   def items(self) -> dict:
-    return self.__dict__.copy()
+    return {k: self._aggregate_fn(v) for k, v in self.__dict__.items() if not k.startswith('_')}
 
   def update(self, metric: dict) -> None:
     """
@@ -28,6 +33,36 @@ class Metrics:
     performant, but will save memory.
     """
     raise NotImplementedError
+
+class BasicTimer:
+    CONV_FACTORS = dict(m=60*1e-9, s=1e-9, ms=1e-6, ns=1)
+    def __init__(self, units='s'):
+      if units not in self.CONV_FACTORS.keys():
+        raise Exception(f"unkown units {units}")
+      self.units = units
+      self._timings = dict()
+      self._names = list()
+
+    def start(self, name):
+      if name in self._names and self._timings[name][-1] >= 0:
+        self._timings[name].append(-1 * time.time_ns())
+      else:
+        self._timings[name] = [-1 * time.time_ns()]
+        self._names.append(name)
+
+    def stop(self, name):
+      if name in self._names and self._timings[name][-1] < 0:
+        self._timings[name][-1] += time.time_ns()
+        self._timings[name][-1] *= self.CONV_FACTORS[self.units]
+      else:
+        print(f"WARN: timer '{name}' was not started")
+
+    def reset(self):
+      self._timings = dict()
+      self._names = list()
+
+    def dump(self):
+      return self._timings.copy()
 
 
 # Helpers for gym envs
@@ -157,6 +192,7 @@ def plot_time(timings, max_epoch, y_axis_label="time"):
       v = np.median(v, axis=0)
     ax.plot(np.linspace(0, max_epoch, v.shape[0], endpoint=False), v, linestyle='solid', linewidth=1, label=k)
     ax.scatter(np.linspace(0, max_epoch, v.shape[0], endpoint=False), v, marker='D', s=5)
+
   plt.xlabel('epochs')
   plt.ylabel(y_axis_label)
   plt.legend(loc='center right', bbox_to_anchor=(1.25, 0.5))
@@ -175,7 +211,7 @@ def visualise_batch_from_experience(id, config, experience, out_dir):
               is_obs=True,
               hz=1)
 
-def visualise_trajectory(id: int, trajectory: List, out_dir: str, prefix="trajectory"):
+def visualise_trajectory(id: str, trajectory: List, out_dir: str, prefix="trajectory"):
   save_as_gif([x[0].cpu().numpy() for x in trajectory], os.path.join(out_dir, f'{prefix}_{id}.gif'))
 
 def visualise_state_trajectory(id: int, trajectory: List, out_dir: str, env: gym.Env):

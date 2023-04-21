@@ -6,7 +6,7 @@ import pickle as pkl
 from typing import List, Tuple
 from matplotlib import pyplot as plt
 from matplotlib import gridspec as gs
-
+from mj_envs_vision.utils.helpers import plot_time
 
 
 BASE_PATH = "/home/bilkit/Workspace/mj_envs_vision/results/"
@@ -31,7 +31,7 @@ def plot_rewards(ax, rewards: List[Tuple], label: str, color: Tuple[float], yaxi
   return ax
 
 
-def plot_metrics(fig, m_gs, metrics: dict[str, list], label: str, color: Tuple[float]):
+def plot_metrics(fig, m_gs, metrics: dict[str, list], max_epoch: int, label: str, color: Tuple[float]):
   n = len(metrics.items())
 
   ax_gs = m_gs.subgridspec((n // 4 if (n % 4 == 0) else n // 4 + 1), 4)
@@ -64,12 +64,25 @@ if __name__ == "__main__":
   print('\033[96m' + f"saving results to {out_dir}" + '\033[0m')
   os.makedirs(out_dir, exist_ok=True)
 
+  fig4 = plt.figure(figsize=tuple(runs["d_figure"]))
+  if "time_comparison" in runs.keys():
+    max_epoch = -1
+    total_time = dict()
+    for i, exp in enumerate(runs["time_comparison"]):
+      timings = pkl.load(open(os.path.join(BASE_PATH, exp), 'rb'))
+      total_time.update({ f"{k}-{runs['run_names'][i]}" : v for k, v in timings["total"].items() })
+      x = np.median(timings["total"]["train"])
+      max_epoch = max(max_epoch, len(timings["total"]["train"]))
+    fig4 = plot_time(total_time, max_epoch, y_axis_label="runtime (s)")
+
   fig1 = plt.figure(figsize=tuple(runs["d_figure"]))
   grids = gs.GridSpec(len(runs["run_names"]), 1, figure=fig1, height_ratios=runs["proportions"])
   if "train_metrics_comparison" in runs.keys():
+    max_epoch = -1
     for i, exp in enumerate(runs["train_metrics_comparison"]):
       metrics = pkl.load(open(os.path.join(BASE_PATH, exp), 'rb'))
-      plot_metrics(fig1, grids[i], metrics, label=runs["run_names"][i], color=color_cycle[i%10])
+      max_epoch = len(list(metrics.items())[0][1])
+      plot_metrics(fig1, grids[i], metrics, max_epoch, label=runs["run_names"][i], color=color_cycle[i%10])
 
   fig2, ax2 = plt.subplots(1, 1, figsize=(10, 5))
   if "train_comparison" in runs.keys():
@@ -90,8 +103,10 @@ if __name__ == "__main__":
   fig1.tight_layout(pad=0.2)
   fig2.tight_layout(pad=0.2)
   fig3.tight_layout(pad=0.2)
+  fig4.tight_layout(pad=0.2)
 
   fig1.savefig(os.path.join(out_dir, "train_metrics.png"))
   fig2.savefig(os.path.join(out_dir, "train_reward.png"))
   fig3.savefig(os.path.join(out_dir, "eval_reward.png"))
+  fig4.savefig(os.path.join(out_dir, "timings.png"))
 

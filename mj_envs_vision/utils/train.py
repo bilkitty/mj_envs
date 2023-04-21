@@ -4,19 +4,18 @@ import time
 import json
 import numpy as np
 import pickle as pkl
+from matplotlib import pyplot as plt
 
 from tqdm import tqdm
 from mj_envs_vision.utils.helpers import visualise_batch_from_experience
 from mj_envs_vision.utils.helpers import visualise_trajectory
-from mj_envs_vision.utils.helpers import plot_rewards
+from mj_envs_vision.utils.helpers import plot_rewards, plot_time
 from mj_envs_vision.utils.helpers import make_env
 from mj_envs_vision.utils.helpers import reset, step
+from mj_envs_vision.utils.helpers import BasicTimer
 from mj_envs_vision.utils.config import load_config
 from mj_envs_vision.utils.eval import evaluate
 from mj_envs_vision.algos.baselines import make_baseline_policy, make_policy_optimisers
-
-
-PROF = True
 
 
 def train(config, policy, optimiser):
@@ -29,106 +28,190 @@ def train(config, policy, optimiser):
     policy.clip_grads(config.grad_clip_norm, norm_type=2)
     for opt in optimiser: opt.step()
 
-
-def train_sb3_policy(config, E, policy, out_dir, device):
-  train_time = list()
-  eval_time = list()
+def train_sb3_policy_(config, E, policy, out_dir, PROF=False):
   exp_rewards = list()
   episode_rewards = list()
   exp_successes = list()
   episode_successes = list()
   episode_trajectories = list()
+  timer_s = BasicTimer('s')
+  train_timings_ms = dict()
+  eval_timings_ms = dict()
 
   # populate buffer with requested batch and chunk size
   rwd, done = 0.0, False
   obs, _ = reset(E)
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)):
-    if PROF: tns = time.time_ns()
+    if PROF: timer_s.start("train")
     policy.update()
+    if PROF: timer_s.stop("train")
     exp_rewards.append((ep, policy.metrics.items()["value_loss"][-1]))
     #exp_successes.append((ep, policy.metrics.total_loss()["success"][-1]))
-    if PROF: train_time.append(time.time_ns() - tns)
+    train_timings_ms.update(policy.timer_ms.dump())
 
     if ep % config.test_interval == 0:
-      if PROF: tns = time.time_ns()
+      if PROF: timer_s.start("eval")
       policy.set_models_to_eval()
-      rewards, successes, trajs = evaluate(config, policy, count=10)
+      rewards, successes, trajs, eval_timings = evaluate(config, policy, count=10, should_time=PROF)
       policy.set_models_to_train()
-      if PROF: eval_time.append(time.time_ns() - tns)
+      if PROF: timer_s.stop("eval")
+      eval_timings_ms.update(eval_timings)
 
       episode_rewards.append((ep, rewards))
       episode_successes.append((ep, successes))
       episode_trajectories.append((ep, trajs))
       if config.state_type == "observation":
-        visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
+        visualise_trajectory(str(ep), trajs[-1], out_dir)  # select worst
+        visualise_trajectory(f"{ep}-init", [x[0] for x in trajs], out_dir)
 
       # TODO: dump metrics to tensorboard
-      pkl.dump(policy.metrics.items(), open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
+      train_metrics = policy.metrics.items()
+      summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
+      pkl.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
       pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
       pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
+      pkl.dump(dict(total=timer_s.dump(), train=train_timings_ms, eval=eval_timings_ms),
+               open(os.path.join(out_dir, "timings.pkl"), "wb"))
 
       # save model
       if ep % config.checkpoint_interval == 0:
         policy.save(os.path.join(out_dir, f"{policy.name}-{config.state_type}-{config.env_name}-{ep}"))
 
   if PROF:
-    train_time, eval_time = [t / 1e9 for t in train_time], [t / 1e9 for t in eval_time]
-    print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s")
-    print(f"total time:\n\t1.00x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr")
+    timings_s = timer_s.dump()
+    print(f"\ttrain={np.median(timings_s['train']): .2f}s, test={np.median(timings_s['eval']): .2f}s")
+    print(f"\ttrain={np.sum(timings_s['train']): .2f}s, test={np.sum(timings_s['eval']): .2f}s")
+    plot_time(timings_s, config.max_episodes, "runtime (s)").savefig(os.path.join(out_dir, "time_total.png"), bbox_inches='tight')
+    plot_time(train_timings_ms, config.max_episodes, "runtime (ms)").savefig(os.path.join(out_dir, "time_train.png"), bbox_inches='tight')
+    plot_time(eval_timings_ms, config.max_episodes, "runtime (ms)").savefig(os.path.join(out_dir, "time_eval.png"), bbox_inches='tight')
 
-  plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward.png"))
-  plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
-  plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_success.png"))
+  plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward.png"), bbox_inches='tight')
+  plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"), bbox_inches='tight')
+  plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_success.png"), bbox_inches='tight')
 
-  return exp_rewards, episode_rewards, policy.metrics.items(), episode_trajectories
+  return exp_rewards, episode_rewards, policy.metrics.items(), episode_trajectories, timer_s.dump()
+
+def train_sb3_policy(config, E, policy, out_dir, PROF=False):
+  exp_rewards = list()
+  episode_rewards = list()
+  episode_successes = list()
+  episode_trajectories = list()
+  timer_s = BasicTimer('s')
+  train_timings_ms = dict()
+  eval_timings_ms = dict()
+
+  for ep in tqdm(range(config.seed_episodes, config.max_episodes, config.test_interval)):
+    if PROF: timer_s.start("train")
+    policy.update()
+    if PROF: timer_s.stop("train")
+    exp_rewards.append((ep, policy.metrics.items()["value_loss"][-1]))
+    train_timings_ms.update(policy.timer_ms.dump())
+
+    if PROF: timer_s.start("eval")
+    policy.set_models_to_eval()
+    rewards, successes, trajs, eval_timings = evaluate(config, policy, count=10, should_time=PROF)
+    policy.set_models_to_train()
+    if PROF: timer_s.stop("eval")
+    eval_timings_ms.update(eval_timings)
+
+    episode_rewards.append((ep, rewards))
+    episode_successes.append((ep, successes))
+    episode_trajectories.append((ep, trajs))
+    if config.state_type == "observation":
+      visualise_trajectory(str(ep), trajs[-1], out_dir)  # select worst
+      visualise_trajectory(f"{ep}-init", [x[0] for x in trajs], out_dir)
+
+    # TODO: dump metrics to tensorboard
+    train_metrics = policy.metrics.items()
+    summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
+    pkl.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
+    pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
+    pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
+    pkl.dump(dict(total=timer_s.dump(), train=train_timings_ms, eval=eval_timings_ms),
+             open(os.path.join(out_dir, "timings.pkl"), "wb"))
+
+    # save model
+    if ep % config.checkpoint_interval == 0:
+      policy.save(os.path.join(out_dir, f"{policy.name}-{config.state_type}-{config.env_name}-{ep}"))
+
+  if PROF:
+    timings_s = timer_s.dump()
+    print(f"\ttrain={np.median(timings_s['train']): .2f}s, test={np.median(timings_s['eval']): .2f}s")
+    print(f"\ttrain={np.sum(timings_s['train']): .2f}s, test={np.sum(timings_s['eval']): .2f}s")
+    plot_time(timings_s, config.max_episodes, "runtime (s)").savefig(os.path.join(out_dir, "time_total.png"), bbox_inches='tight')
+    plot_time(train_timings_ms, config.max_episodes, "runtime (ms)").savefig(os.path.join(out_dir, "time_train.png"), bbox_inches='tight')
+    plot_time(eval_timings_ms, config.max_episodes, "runtime (ms)").savefig(os.path.join(out_dir, "time_eval.png"), bbox_inches='tight')
+
+  plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_reward.png"), bbox_inches='tight')
+  plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"), bbox_inches='tight')
+  plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_success.png"), bbox_inches='tight')
+
+  return exp_rewards, episode_rewards, policy.metrics.items(), episode_trajectories, timer_s.dump()
 
 
-def train_policy(config, E, policy, optimiser, out_dir, device):
+def train_policy(config, E, policy, optimiser, out_dir, PROF=False):
   # NOTE: all policies are responsible for preprocessing obs into input data
-  train_time = list()
-  eval_time = list()
-  sim_time = list()
   exp_rewards = list()
   episode_rewards = list()
   exp_successes = list()
   episode_successes = list()
   episode_trajectories = list()
+  timer_s = BasicTimer('s')
+  train_timings_ms = dict()
+  eval_timings_ms = dict()
 
   # populate buffer with requested batch and chunk size
   print(f"Initialising experience replay with max(batch_size, chunk_size) samples")
+  if PROF: timer_s.start("sim")
   collect_experience(E, policy, sample_count=config.batch_size * config.chunk_size)
+  if PROF: timer_s.stop("sim")
   n_samples = config.max_episode_length // config.action_repeat
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
-    if PROF: tns = time.time_ns()
+    if PROF: timer_s.start("train")
     train(config, policy, optimiser)
-    if PROF: train_time.append(time.time_ns() - tns)
+    if PROF: timer_s.stop("train")
+    for k,v in policy.timer_ms.dump().items():
+      if train_timings_ms.get(k):
+        train_timings_ms[k].append(np.mean(v))
+      else:
+        train_timings_ms[k] = [np.mean(v)]
     # TODO: dump metrics to tensorboard
 
-    if PROF: tns = time.time_ns()
+    if PROF: timer_s.start("sim")
     train_reward, train_successes = collect_experience(E, policy, n_samples)
+    if PROF: timer_s.stop("sim")
     exp_rewards.append((ep, [train_reward]))
     exp_successes.append((ep, [train_successes]))
-    if PROF: sim_time.append(time.time_ns() - tns)
 
     if ep % config.test_interval == 0:
-      if PROF: tns = time.time_ns()
+      if PROF: timer_s.start("eval")
       policy.set_models_to_eval()
-      rewards, successes, trajs = evaluate(config, policy, count=10)
+      rewards, successes, trajs, eval_timings = evaluate(config, policy, count=10, should_time=PROF)
       policy.set_models_to_train()
-      if PROF: eval_time.append(time.time_ns() - tns)
+      if PROF: timer_s.stop("eval")
+      for k,v in eval_timings.items():
+        if eval_timings_ms.get(k):
+          eval_timings_ms[k].append(np.mean(v))
+        else:
+          eval_timings_ms[k] = [np.mean(v)]
 
       episode_rewards.append((ep, rewards))
       episode_successes.append((ep, successes))
       episode_trajectories.append((ep, trajs))
       if config.state_type == "observation":
-        visualise_trajectory(ep, trajs[-1], out_dir)  # select worst
+        visualise_trajectory(str(ep), trajs[-1], out_dir)  # select worst
+        visualise_trajectory(f"{ep}-init", [x[0] for x in trajs], out_dir)
 
       # TODO: dump metrics to tensorboard
-      pkl.dump(policy.metrics.items(), open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
+      train_metrics = policy.metrics.items()
+      summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
+      pkl.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
       pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
       pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
+      pkl.dump(dict(total=timer_s.dump(), train=train_timings_ms, eval=eval_timings_ms),
+               open(os.path.join(out_dir, "timings.pkl"), "wb"))
 
 
     # save model
@@ -141,16 +224,20 @@ def train_policy(config, E, policy, optimiser, out_dir, device):
       visualise_batch_from_experience(i, config, policy.experience, out_dir)
 
   if PROF:
-    train_time, eval_time, sim_time = [t / 1e9 for t in train_time], [t / 1e9 for t in eval_time], [t / 1e9 for t in sim_time]
-    print(f"iter time:\n\t{np.median(train_time): .2f}s\n\t{np.median(eval_time): .2f}s\n\t{np.median(sim_time): .2f}s")
-    print(f"total time:\n\t1.00x tr\n\t{np.sum(eval_time)/np.sum(train_time): .2f}x tr\n\t{np.sum(sim_time)/np.sum(train_time): .2f}x tr")
+    timings_s = timer_s.dump()
+    print(f"\ttrain={np.median(timings_s['train']): .2f}s, sim={np.median(timings_s['sim']): .2f}s, test={np.median(timings_s['eval']): .2f}s")
+    print(f"\t    ->{np.sum(timings_s['train']): .2f}s,   ->{np.sum(timings_s['sim']): .2f}s,    ->{np.sum(timings_s['eval']): .2f}s")
+    plot_time(timings_s, config.max_episodes, "runtime (s)").savefig(os.path.join(out_dir, "time_total.png"), bbox_inches='tight')
+    plot_time(train_timings_ms, config.max_episodes, "runtime (ms)").savefig(os.path.join(out_dir, "time_train.png"), bbox_inches='tight')
+    plot_time(eval_timings_ms, config.max_episodes, "runtime (ms)").savefig(os.path.join(out_dir, "time_eval.png"), bbox_inches='tight')
 
-  plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_rewards.png"))
-  plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"))
-  plot_rewards(exp_successes, "success rate").savefig(os.path.join(out_dir, "train_success.png"))
-  plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_success.png"))
 
-  return exp_rewards, episode_rewards, policy.metrics.items(), episode_trajectories
+  plot_rewards(exp_rewards, "total rewards").savefig(os.path.join(out_dir, "train_rewards.png"), bbox_inches='tight')
+  plot_rewards(episode_rewards, "total rewards").savefig(os.path.join(out_dir, "eval_rewards.png"), bbox_inches='tight')
+  plot_rewards(exp_successes, "success rate").savefig(os.path.join(out_dir, "train_success.png"), bbox_inches='tight')
+  plot_rewards(episode_successes, "success rate").savefig(os.path.join(out_dir, "eval_success.png"), bbox_inches='tight')
+
+  return exp_rewards, episode_rewards, policy.metrics.items(), episode_trajectories, timer_s.dump()
 
 
 def collect_experience(E, policy, sample_count):
@@ -216,15 +303,11 @@ if __name__ == "__main__":
   # TODO: load optimisers
 
   # train policy on target environment
-  exp_rewards, episode_rewards, train_metrics, episode_trajectories = train_policy(config,
-                                                                    E,
-                                                                    policy,
-                                                                    optimiser,
-                                                                    out_dir,
-                                                                    device)
+  results = train_sb3_policy(config, E, policy, out_dir, True) if policy_type == "ppo" \
+    else train_policy(config, E, policy, optimiser, out_dir, True)
   E.close()
 
-  train_metrics = {k:list(np.array(v).reshape(config.sample_iters, -1).mean(axis=0)) for k,v in train_metrics.items()}
+  exp_rewards, episode_rewards, train_metrics = results[:3]
   summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
   json.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.json"), "w"))
   pkl.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
@@ -232,3 +315,4 @@ if __name__ == "__main__":
   pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
 
   print("done :)")
+
