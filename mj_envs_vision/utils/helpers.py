@@ -146,22 +146,28 @@ def save_as_gif(frames: List[np.ndarray], gif_path: str, is_obs: bool=False, hz:
   durations = 1/hz * 1000
   pils[0].save(gif_path, append_images=pils, save_all=True, optimize=False, loop=1, duration=durations)
 
-def grid_gif(gif_path: str, t_sample: int = 1, is_square: bool=True):
-  n = max(2, math.ceil(math.sqrt(t_sample))) if is_square else t_sample
-  m = max(2, math.floor(math.sqrt(t_sample))) if is_square else 1
-  fig, ax = plt.subplots(m, n, figsize=(8, 5))
-  if not is_square: ax = ax.reshape(1, -1)
-  for x in range(0, t_sample):
-    path = gif_path.replace("_0.gif", f"_{x}.gif")
-    assert os.path.exists(path), f"{path}"
-    im = Image.open(path).convert("RGB")
-    ax[x // n, x % n].imshow(im)
-    ax[x // n, x % n].axis('off')
-    ax[x // n, x % n].set_xlabel(f"sample {x}")
-    ax[x // n, x % n].set_box_aspect(1)
+def grid_gif(gif_paths: List[str], t_sample: int = 1, is_square: bool=True):
+  assert t_sample > 0
+  # note: gifs contain m=(max_episodes // action_repeat) frames
+  m = max(2, len(gif_paths))
+  n = m if is_square else t_sample + 1
+  fig, ax = plt.subplots(m, n, figsize=(n * 1.1, m * 1.2))
+  for i, gif_path in enumerate(gif_paths):
+    assert os.path.exists(gif_path), f"{gif_path}"
+    gif = Image.open(gif_path)
+    if i == 0: print(f"loaded {gif.n_frames} frames")
+    for x in range(t_sample + 1):
+      gif.seek(min(x * gif.n_frames // t_sample, gif.n_frames - 1))
+      ax[i, x].imshow(ImageSequence.Iterator(gif).im.convert("RGB"))
+      ax[i, x].axis('off')
+      if x == 0:
+        ax[i, x].text(m + 10, n + 5, f"t=0 (ep={gif_path.split('trajectory_')[-1].replace('.gif','')})", dict(fontsize=6, color='w'))
+      else:
+        ax[i, x].text(m + 10, n + 5, f"{gif.tell()}", dict(fontsize=6, color='w'))
+      ax[i, x].set_box_aspect(1)
 
   fig.tight_layout(pad=0.2)
-  fig.savefig(gif_path.replace("_0.gif", "_grid.png"))
+  return fig
 
 def plot_rewards(rewards: List[Tuple], yaxis_label="total reward"):
   fig, ax = plt.subplots(1, 1, figsize=(10, 5))
@@ -193,9 +199,9 @@ def plot_time(timings, max_epoch, y_axis_label="time"):
     ax.plot(np.linspace(0, max_epoch, v.shape[0], endpoint=False), v, linestyle='solid', linewidth=1, label=k)
     ax.scatter(np.linspace(0, max_epoch, v.shape[0], endpoint=False), v, marker='D', s=5)
 
-  plt.xlabel('epochs')
-  plt.ylabel(y_axis_label)
-  plt.legend(loc='center right', bbox_to_anchor=(1.25, 0.5))
+  ax.set_xlabel('epochs')
+  ax.set_ylabel(y_axis_label)
+  ax.legend(loc='center right', bbox_to_anchor=(1.25, 0.5))
   ax.set_box_aspect(1)
   fig.tight_layout(pad=0.2)
   return fig
