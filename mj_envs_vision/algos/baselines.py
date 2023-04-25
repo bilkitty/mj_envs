@@ -124,7 +124,7 @@ class PPOBaseline:
     self.env_name = config.env_name
     self.learning_rate = config.learning_rate
     self.n_steps = config.test_interval
-    self.log_interval = config.test_interval
+    self.log_interval = 1
     self.epochs = config.sample_iters
     self.batch_size = config.batch_size
     self.target_kl = None
