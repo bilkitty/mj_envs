@@ -566,12 +566,10 @@ class Dreamer:
     # Policy iteration on latent rollouts
     #
 
-    # NOTE: in dynamics backprop mode, the policy loss is computed from rewards and
-    #       critic_target's output, which have requires_grad = False
     self.timer_ms.start("dreamer-train-ac")
     ac_loss, ac_metrics, _ = self.agent.training_step(latents.detach(),
                                                       actions.detach(),
-                                                      rewards if self.ac_grad_mode == "dynamics" else rewards.detach(),
+                                                      rewards.detach(),
                                                       terminals.detach())
     self.timer_ms.stop("dreamer-train-ac")
     self.metrics.update(ac_metrics)
