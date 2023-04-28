@@ -19,9 +19,9 @@ from mj_envs_vision.algos.baselines import make_baseline_policy, make_policy_opt
 
 
 def train(config, policy, optimiser):
-  # NOTE: there will be config.sample_iters x (config.max_episodes - config.seed_episodes + 1)
+  # NOTE: there will be config.train_epochs x (config.max_episodes - config.seed_episodes + 1)
   # items in policy metrics.
-  for t in range(config.sample_iters):
+  for t in range(config.train_epochs):
     L = policy.update()
     for opt in optimiser: opt.zero_grad(set_to_none=True)
     L.backward()
@@ -106,14 +106,22 @@ def train_sb3_policy(config, E, policy, out_dir, PROF=False):
     policy.update()
     if PROF: timer_s.stop("train")
     exp_rewards.append((ep, policy.metrics.items()["value_loss"][-1]))
-    train_timings_ms.update(policy.timer_ms.dump())
+    for k,v in policy.timer_ms.dump().items():
+      if train_timings_ms.get(k):
+        train_timings_ms[k].append(np.mean(v))
+      else:
+        train_timings_ms[k] = [np.mean(v)]
 
     if PROF: timer_s.start("eval")
     policy.set_models_to_eval()
     rewards, successes, trajs, eval_timings = evaluate(config, policy, count=10, should_time=PROF)
     policy.set_models_to_train()
     if PROF: timer_s.stop("eval")
-    eval_timings_ms.update(eval_timings)
+    for k,v in eval_timings.items():
+      if eval_timings_ms.get(k):
+        eval_timings_ms[k].append(np.mean(v))
+      else:
+        eval_timings_ms[k] = [np.mean(v)]
 
     episode_rewards.append((ep, rewards))
     episode_successes.append((ep, successes))

@@ -125,7 +125,7 @@ class PPOBaseline:
     self.learning_rate = config.learning_rate
     self.n_steps = config.test_interval
     self.log_interval = 1
-    self.epochs = config.sample_iters
+    self.epochs = config.train_epochs
     self.batch_size = config.batch_size
     self.target_kl = None
     self.entropy_coeff = config.entropy
@@ -134,8 +134,8 @@ class PPOBaseline:
     self.experience = None
     self.timer_ms = BasicTimer('ms')
 
-    if config.sample_iters > 10:
-      print(f"WARN: consider decreasing sample_iters '{config.sample_iters}'")
+    if config.train_epochs > 10:
+      print(f"WARN: consider decreasing train_epochs '{config.train_epochs}'")
 
     if config.model_type == "mlp":
       policy_type = ActorCriticPolicy#(observation_space, action_space, lr_schedule=lambda x: 0.0)
@@ -238,7 +238,7 @@ class Planet:
     self.action_space = action_space
     self.device = device
     self.models_path = config.models_path
-    self.metrics = PlanetMetrics(config.sample_iters)
+    self.metrics = PlanetMetrics(config.train_epochs)
     self.timer_ms = BasicTimer('ms')
 
     # TODO: track prediction errors + provide reconstructions for vis
@@ -426,7 +426,7 @@ class Dreamer:
     self.device = device
     self.models_path = cfg.models_path
     # TODO: track prediction errors + provide reconstructions for vis
-    self.metrics = DreamerMetrics(cfg.sample_iters)
+    self.metrics = DreamerMetrics(cfg.train_epochs)
     self.timer_ms = BasicTimer('ms')
 
     assert cfg.action_dim == action_size, "please set actions for dex man"

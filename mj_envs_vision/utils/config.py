@@ -22,7 +22,7 @@ class Config(json.JSONEncoder):
     self.max_episodes = 1000
     self.max_episode_length = 500
     self.experience_size = 1000000
-    self.sample_iters = 1000
+    self.train_epochs = 1000
     self.test_interval = 100
     self.activation_fn = 'relu'
     self.action_noise = 0.3
@@ -96,7 +96,7 @@ class DefaultPlanetConfig(Config):
     self.free_nats = 3
     self.planning_horizon = 12
     self.optimisation_iters = 10
-
+    # collect_interval = 100 is analogous to training epochs
 
 class DefaultPPOConfig(Config):
   def __init__(self):
