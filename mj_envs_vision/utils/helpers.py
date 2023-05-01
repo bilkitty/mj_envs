@@ -14,8 +14,9 @@ from dependencies.PlaNet.env import GYM_ENVS
 from mj_envs_vision.utils.wrappers import STATE_KEY
 from mj_envs_vision.utils.wrappers import CustomPixelObservationWrapper, GuiObservationWrapper
 
-
 DEFAULT_HZ = 30
+color_cycle = [plt.cm.get_cmap('Pastel2')(x) for x in range(10)]
+plt.rcParams.update({"font.size": 22})
 
 
 class Metrics:
@@ -146,22 +147,25 @@ def save_as_gif(frames: List[np.ndarray], gif_path: str, is_obs: bool=False, hz:
   durations = 1/hz * 1000
   pils[0].save(gif_path, append_images=pils, save_all=True, optimize=False, loop=1, duration=durations)
 
-def grid_gif(gif_paths: List[str], t_sample: int = 1, is_square: bool=True):
+def grid_gif(gif_paths: List[str], t_sample: int = 1, is_square: bool=True, t_stop: int=None):
   assert t_sample > 0
   # note: gifs contain m=(max_episodes // action_repeat) frames
-  m = max(2, len(gif_paths))
+  m = len(gif_paths)
   n = m if is_square else t_sample + 1
   fig, ax = plt.subplots(m, n, figsize=(n * 1.1, m * 1.2))
+  if m == 1: ax = ax.reshape(1, -1)
   for i, gif_path in enumerate(gif_paths):
     assert os.path.exists(gif_path), f"{gif_path}"
     gif = Image.open(gif_path)
     if i == 0: print(f"loaded {gif.n_frames} frames")
+    if t_stop == None: t_stop = gif.n_frames
     for x in range(t_sample + 1):
-      gif.seek(min(x * gif.n_frames // t_sample, gif.n_frames - 1))
+      gif.seek(min(x * t_stop // t_sample, t_stop - 1))
       ax[i, x].imshow(ImageSequence.Iterator(gif).im.convert("RGB"))
       ax[i, x].axis('off')
       if x == 0:
-        ax[i, x].text(m + 10, n + 5, f"t=0 (ep={gif_path.split('trajectory_')[-1].replace('.gif','')})", dict(fontsize=6, color='w'))
+        episode = gif_path.split('trajectory_')[-1].replace('.gif','') if "trajectory_" in gif_path else "n/a"
+        ax[i, x].text(m + 10, n + 5, f"t=0 (ep={episode})", dict(fontsize=6, color='w'))
       else:
         ax[i, x].text(m + 10, n + 5, f"{gif.tell()}", dict(fontsize=6, color='w'))
       ax[i, x].set_box_aspect(1)
@@ -201,7 +205,7 @@ def plot_time(timings, max_epoch, y_axis_label="time"):
 
   ax.set_xlabel('epochs')
   ax.set_ylabel(y_axis_label)
-  ax.legend(loc='center right', bbox_to_anchor=(1.25, 0.5))
+  fig.legend(loc='center right')
   ax.set_box_aspect(1)
   fig.tight_layout(pad=0.2)
   return fig
