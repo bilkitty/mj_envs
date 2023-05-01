@@ -11,13 +11,17 @@ from mj_envs_vision.utils.helpers import plot_time
 
 BASE_PATH = "/home/bilkit/Workspace/mj_envs_vision/results/"
 color_cycle = [plt.cm.get_cmap('Pastel2')(x) for x in range(10)]
+plt.rcParams.update({"font.size": 22})
 
 
 def plot_rewards(ax, rewards: List[Tuple], label: str, color: Tuple[float], yaxis_label="total reward"):
   ep = np.array([x[0] for x in rewards])
   rwd = np.array([x[1] for x in rewards])
   if len(rwd.shape) == 1:
-    ax.plot(ep, rwd, linestyle='solid', linewidth=2.5, label=label, color=color)
+    if rwd.shape[0] == 1:
+      ax.hlines(rewards[0][1], 0, rewards[0][0], linestyles='dashed', linewidth=3, label=label, color=color)
+    else:
+      ax.plot(ep, rwd, linestyle='solid', linewidth=2.5, label=label, color=color)
     rwd = rwd.reshape(-1, 1)
   else:
     mu, std, med = np.mean(rwd, axis=-1), np.std(rwd, axis=-1), np.median(rwd, axis=-1)
@@ -25,7 +29,7 @@ def plot_rewards(ax, rewards: List[Tuple], label: str, color: Tuple[float], yaxi
     ax.plot(ep, med, linestyle='solid', linewidth=2.5, label=label, color=color)
     ax.fill_between(ep, mu - std, mu + std, alpha=0.25, color=color)
 
-  ax.set_xlabel('epochs')
+  ax.set_xlabel('episodes')
   ax.set_ylabel(f'{yaxis_label} n=({rwd.shape[-1]})')
   ax.legend(loc='upper right')
   return ax
@@ -42,7 +46,7 @@ def plot_metrics(fig, m_gs, metrics: dict[str, list], max_epoch: int, label: str
     ax = fig.add_subplot(ax_gs[i])
 
     ax.plot(ep, y, linestyle='dashed', linewidth=2.3, color=color, label=labels[i])
-    ax.set_xlabel('epochs')
+    ax.set_xlabel('episodes')
     ax.set_ylabel(f'{labels[i]} n=({y.shape[-1]})')
     #ax.legend(loc='upper right')
     ax.set_box_aspect(1)
@@ -71,7 +75,6 @@ if __name__ == "__main__":
     for i, exp in enumerate(runs["time_comparison"]):
       timings = pkl.load(open(os.path.join(BASE_PATH, exp), 'rb'))
       total_time.update({ f"{k}-{runs['run_names'][i]}" : v for k, v in timings["total"].items() })
-      x = np.median(timings["total"]["train"])
       max_epoch = max(max_epoch, len(timings["total"]["train"]))
     fig4 = plot_time(total_time, max_epoch, y_axis_label="runtime (s)")
 
@@ -88,6 +91,10 @@ if __name__ == "__main__":
   if "train_comparison" in runs.keys():
     for i, exp in enumerate(runs["train_comparison"]):
       rewards = pkl.load(open(os.path.join(BASE_PATH, exp), 'rb'))
+      if '*' in runs["run_names"][i]:
+        rewards = [(runs["max_episodes"], np.max([np.mean(r[1]) for r in rewards]))]
+      if '@' in runs["run_names"][i]:
+        rewards = [(runs["max_episodes"], np.mean(rewards[-1][1]))]
       plot_rewards(ax2, rewards, label=runs["run_names"][i], color=color_cycle[i%10], yaxis_label="train reward")
 
   fig3, ax3 = plt.subplots(1, 1, figsize=(10, 5))
@@ -97,6 +104,10 @@ if __name__ == "__main__":
       rewards = pkl.load(open(os.path.join(BASE_PATH, exp), 'rb'))
       if r_constant:
         rewards = [(r[0], r[1] / r_constant) for r in rewards]
+      if '*' in runs["run_names"][i]:
+        rewards = [(runs["max_episodes"], np.max([np.mean(r[1]) for r in rewards]))]
+      if '@' in runs["run_names"][i]:
+        rewards = [(runs["max_episodes"], np.mean(rewards[-1][1]))]
       plot_rewards(ax3, rewards, label=runs["run_names"][i], color=color_cycle[i%10], yaxis_label="eval reward")
 
 
@@ -105,8 +116,8 @@ if __name__ == "__main__":
   fig3.tight_layout(pad=0.2)
   fig4.tight_layout(pad=0.2)
 
-  fig1.savefig(os.path.join(out_dir, "train_metrics.png"))
-  fig2.savefig(os.path.join(out_dir, "train_reward.png"))
-  fig3.savefig(os.path.join(out_dir, "eval_reward.png"))
-  fig4.savefig(os.path.join(out_dir, "timings.png"))
+  fig1.savefig(os.path.join(out_dir, "train_metrics.png"), bbox_inches='tight')
+  fig2.savefig(os.path.join(out_dir, "train_reward.png"), bbox_inches='tight')
+  fig3.savefig(os.path.join(out_dir, "eval_reward.png"), bbox_inches='tight')
+  fig4.savefig(os.path.join(out_dir, "timings.png"), bbox_inches='tight')
 
