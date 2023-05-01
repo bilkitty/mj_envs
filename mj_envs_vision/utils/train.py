@@ -38,9 +38,8 @@ def train_sb3_policy_(config, E, policy, out_dir, PROF=False):
   train_timings_ms = dict()
   eval_timings_ms = dict()
 
-  # populate buffer with requested batch and chunk size
-  rwd, done = 0.0, False
   obs, _ = reset(E)
+  test_env = make_env(config)
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)):
     if PROF: timer_s.start("train")
@@ -53,7 +52,7 @@ def train_sb3_policy_(config, E, policy, out_dir, PROF=False):
     if ep % config.test_interval == 0:
       if PROF: timer_s.start("eval")
       policy.set_models_to_eval()
-      rewards, successes, trajs, eval_timings = evaluate(config, policy, count=10, should_time=PROF)
+      rewards, successes, trajs, eval_timings = evaluate(config, policy, test_env, count=10, should_time=PROF)
       policy.set_models_to_train()
       if PROF: timer_s.stop("eval")
       eval_timings_ms.update(eval_timings)
@@ -68,11 +67,11 @@ def train_sb3_policy_(config, E, policy, out_dir, PROF=False):
       # TODO: dump metrics to tensorboard
       train_metrics = policy.metrics.items()
       summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
-      pkl.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
-      pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
-      pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
+      pkl.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.pkl"), "wb"))
+      pkl.dump(exp_rewards, open(os.path.join(out_dir, f"train_rewards-{config.seed_episodes}.pkl"), "wb"))
+      pkl.dump(episode_rewards, open(os.path.join(out_dir, f"eval_rewards-{config.seed_episodes}.pkl"), "wb"))
       pkl.dump(dict(total=timer_s.dump(), train=train_timings_ms, eval=eval_timings_ms),
-               open(os.path.join(out_dir, "timings.pkl"), "wb"))
+               open(os.path.join(out_dir, f"timings-{config.seed_episodes}.pkl"), "wb"))
 
       # save model
       if ep % config.checkpoint_interval == 0:
@@ -98,8 +97,14 @@ def train_sb3_policy(config, E, policy, out_dir, PROF=False):
   episode_successes = list()
   episode_trajectories = list()
   timer_s = BasicTimer('s')
+  timer_ms = BasicTimer('ms')
   train_timings_ms = dict()
   eval_timings_ms = dict()
+
+  timer_ms.start("eval-init")
+  test_env = make_env(config)
+  timer_ms.stop("eval-init")
+  eval_timings_ms["eval-init"] = list(timer_ms.dump().values())
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes, config.test_interval)):
     if PROF: timer_s.start("train")
@@ -114,7 +119,7 @@ def train_sb3_policy(config, E, policy, out_dir, PROF=False):
 
     if PROF: timer_s.start("eval")
     policy.set_models_to_eval()
-    rewards, successes, trajs, eval_timings = evaluate(config, policy, count=10, should_time=PROF)
+    rewards, successes, trajs, eval_timings = evaluate(config, policy, test_env, count=10, should_time=PROF)
     policy.set_models_to_train()
     if PROF: timer_s.stop("eval")
     for k,v in eval_timings.items():
@@ -133,11 +138,11 @@ def train_sb3_policy(config, E, policy, out_dir, PROF=False):
     # TODO: dump metrics to tensorboard
     train_metrics = policy.metrics.items()
     summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
-    pkl.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
-    pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
-    pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
+    pkl.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.pkl"), "wb"))
+    pkl.dump(exp_rewards, open(os.path.join(out_dir, f"train_rewards-{config.seed_episodes}.pkl"), "wb"))
+    pkl.dump(episode_rewards, open(os.path.join(out_dir, f"eval_rewards-{config.seed_episodes}.pkl"), "wb"))
     pkl.dump(dict(total=timer_s.dump(), train=train_timings_ms, eval=eval_timings_ms),
-             open(os.path.join(out_dir, "timings.pkl"), "wb"))
+             open(os.path.join(out_dir, f"timings-{config.seed_episodes}.pkl"), "wb"))
 
     # save model
     if ep % config.checkpoint_interval == 0:
@@ -166,6 +171,7 @@ def train_policy(config, E, policy, optimiser, out_dir, PROF=False):
   episode_successes = list()
   episode_trajectories = list()
   timer_s = BasicTimer('s')
+  timer_ms = BasicTimer('ms')
   train_timings_ms = dict()
   eval_timings_ms = dict()
 
@@ -175,6 +181,11 @@ def train_policy(config, E, policy, optimiser, out_dir, PROF=False):
   collect_experience(E, policy, sample_count=config.batch_size * config.chunk_size)
   if PROF: timer_s.stop("sim")
   n_samples = config.max_episode_length // config.action_repeat
+
+  timer_ms.start("eval-init")
+  test_env = make_env(config)
+  timer_ms.stop("eval-init")
+  eval_timings_ms["eval-init"] = list(timer_ms.dump().values())
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
     if PROF: timer_s.start("train")
@@ -196,7 +207,7 @@ def train_policy(config, E, policy, optimiser, out_dir, PROF=False):
     if ep % config.test_interval == 0:
       if PROF: timer_s.start("eval")
       policy.set_models_to_eval()
-      rewards, successes, trajs, eval_timings = evaluate(config, policy, count=10, should_time=PROF)
+      rewards, successes, trajs, eval_timings = evaluate(config, policy, test_env, count=10, should_time=PROF)
       policy.set_models_to_train()
       if PROF: timer_s.stop("eval")
       for k,v in eval_timings.items():
@@ -215,11 +226,11 @@ def train_policy(config, E, policy, optimiser, out_dir, PROF=False):
       # TODO: dump metrics to tensorboard
       train_metrics = policy.metrics.items()
       summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
-      pkl.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
-      pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
-      pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
+      pkl.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.pkl"), "wb"))
+      pkl.dump(exp_rewards, open(os.path.join(out_dir, f"train_rewards-{config.seed_episodes}.pkl"), "wb"))
+      pkl.dump(episode_rewards, open(os.path.join(out_dir, f"eval_rewards-{config.seed_episodes}.pkl"), "wb"))
       pkl.dump(dict(total=timer_s.dump(), train=train_timings_ms, eval=eval_timings_ms),
-               open(os.path.join(out_dir, "timings.pkl"), "wb"))
+               open(os.path.join(out_dir, f"timings-{config.seed_episodes}.pkl"), "wb"))
 
 
     # save model
@@ -317,10 +328,10 @@ if __name__ == "__main__":
 
   exp_rewards, episode_rewards, train_metrics = results[:3]
   summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
-  json.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.json"), "w"))
-  pkl.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
-  pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
-  pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
+  json.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.json"), "w"))
+  pkl.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.pkl"), "wb"))
+  pkl.dump(exp_rewards, open(os.path.join(out_dir, f"train_rewards-{config.seed_episodes}.pkl"), "wb"))
+  pkl.dump(episode_rewards, open(os.path.join(out_dir, f"eval_rewards-{config.seed_episodes}.pkl"), "wb"))
 
   print("done :)")
 
