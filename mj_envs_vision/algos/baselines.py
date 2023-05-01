@@ -84,6 +84,9 @@ class MLPBaseline:
   def set_models_to_train(self):
     pass
 
+  def set_checkpoint_index(self, idx):
+    pass
+
   def load(self) -> str:
     if self.is_random:
       self.mlp = MLP(self.env_spec, hidden_sizes=(32, 32), seed=self.seed, init_log_std=-1.0)
@@ -130,6 +133,7 @@ class PPOBaseline:
     self.target_kl = None
     self.entropy_coeff = config.entropy
     self.models_path = config.models_path
+    self.model_idx = 0
     self.metrics = PPOMetrics(group_size=1)
     self.experience = None
     self.timer_ms = BasicTimer('ms')
@@ -167,6 +171,9 @@ class PPOBaseline:
   def set_models_to_train(self):
     pass
 
+  def set_checkpoint_index(self, idx):
+    self.model_idx = idx
+
   def load(self) -> str:
     models_path = self.models_path
     if os.path.isdir(models_path):
@@ -174,7 +181,7 @@ class PPOBaseline:
       if len(paths) == 0:
         raise Exception(f"Failed to load models in {models_path}")
       else:
-        models_path = sorted(paths)[0]
+        models_path = sorted(paths)[self.model_idx]
 
     print(f"Loading pre-trained model '{models_path}'")
     self.timer_ms.start("ppo-load")
@@ -238,6 +245,7 @@ class Planet:
     self.action_space = action_space
     self.device = device
     self.models_path = config.models_path
+    self.model_idx = 0
     self.metrics = PlanetMetrics(config.train_epochs)
     self.timer_ms = BasicTimer('ms')
 
@@ -279,6 +287,9 @@ class Planet:
     self.zero_mean = torch.zeros(config.batch_size, config.state_size, device=self.device)
     self.unit_var = torch.ones(config.batch_size, config.state_size, device=self.device)
 
+  def set_checkpoint_index(self, idx):
+    self.model_idx = idx
+
   def load(self) -> str:
     models_path = self.models_path
     if os.path.isdir(models_path):
@@ -286,7 +297,7 @@ class Planet:
       if len(paths) == 0:
         raise Exception(f"Failed to load models in {models_path}")
       else:
-        models_path = sorted(paths)[-1]
+        models_path = sorted(paths)[self.model_idx]
 
     print(f"Loading pre-trained model '{models_path}'")
     self.timer_ms.start("planet-load")
@@ -425,6 +436,7 @@ class Dreamer:
     self.input_obs = None # named obs (see apply::preprocessing.py & wrappers.py)
     self.device = device
     self.models_path = cfg.models_path
+    self.model_idx = 0
     # TODO: track prediction errors + provide reconstructions for vis
     self.metrics = DreamerMetrics(cfg.train_epochs)
     self.timer_ms = BasicTimer('ms')
@@ -449,6 +461,9 @@ class Dreamer:
 
     self.reset()
 
+  def set_checkpoint_index(self, idx):
+    self.model_idx = idx
+
   def load(self) -> str:
     models_path = self.models_path
     if os.path.isdir(models_path):
@@ -456,7 +471,7 @@ class Dreamer:
       if len(paths) == 0:
         raise Exception(f"Failed to load models in {models_path}")
       else:
-        models_path = sorted(paths)[-1]
+        models_path = sorted(paths)[self.model_idx]
 
     print(f"Loading pre-trained model '{models_path}'")
     self.timer_ms.start("dreamer-load")

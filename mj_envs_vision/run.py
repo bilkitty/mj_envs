@@ -71,9 +71,9 @@ if __name__ == "__main__":
   # save performance metrics
   exp_rewards, episode_rewards, train_metrics = results[:3]
   summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
-  json.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.json"), "w"))
-  pkl.dump(summary_metrics, open(os.path.join(out_dir, "train_metrics.pkl"), "wb"))
-  pkl.dump(exp_rewards, open(os.path.join(out_dir, "train_rewards.pkl"), "wb"))
-  pkl.dump(episode_rewards, open(os.path.join(out_dir, "eval_rewards.pkl"), "wb"))
+  json.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.json"), "w"))
+  pkl.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.pkl"), "wb"))
+  pkl.dump(exp_rewards, open(os.path.join(out_dir, f"train_rewards-{config.seed_episodes}.pkl"), "wb"))
+  pkl.dump(episode_rewards, open(os.path.join(out_dir, f"eval_rewards-{config.seed_episodes}.pkl"), "wb"))
 
   print("done :)")
