@@ -15,6 +15,8 @@ class Config(json.JSONEncoder):
     self.device_type = 'cpu'
     self.disable_cuda = False
     self.models_path = ""
+    self.models_path_bootstrap = ""
+    self.bootstrap_interval = 1
     self.log_path = None
     self.nogui = True
     # Algorithm parameters
