@@ -60,6 +60,11 @@ def train_sb3_policy(config, E, policy, out_dir, PROF=False):
   if PROF: timer_s.stop("sim")
   n_samples = config.max_episode_length // config.action_repeat
 
+  timer_ms.start("eval-init")
+  test_env = make_env(config)
+  timer_ms.stop("eval-init")
+  eval_timings_ms["eval-init"] = list(timer_ms.dump().values())
+
   for ep in tqdm(range(config.seed_episodes, config.max_episodes, config.test_interval)):
     if PROF: timer_s.start("train")
     policy.update()
@@ -151,7 +156,7 @@ def train_policy(config, E, policy, optimiser, out_dir, PROF=False):
   timer_ms.start("eval-init")
   test_env = make_env(config)
   timer_ms.stop("eval-init")
-  eval_timings_ms["eval-init"] = list(timer_ms.dump().items())
+  eval_timings_ms["eval-init"] = list(timer_ms.dump().values())
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
     if PROF: timer_s.start("train")
