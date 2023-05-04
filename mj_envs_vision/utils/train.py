@@ -29,7 +29,7 @@ def train(config, policy, optimiser):
     for opt in optimiser: opt.step()
 
 
-def train_sb3_policy(config, E, policy, out_dir, PROF=False):
+def train_sb3_policy(config, E, policy, out_dir, device, PROF=False):
   exp_rewards = list()
   episode_rewards = list()
   episode_successes = list()
@@ -110,6 +110,10 @@ def train_sb3_policy(config, E, policy, out_dir, PROF=False):
     if ep % config.checkpoint_interval == 0:
       policy.save(os.path.join(out_dir, f"{policy.name}-{config.state_type}-{config.env_name}-{ep}"))
 
+  if config.state_type == "observation" and policy.experience is not None:
+    for i in range(5):
+      visualise_batch_from_experience(i, config, policy.experience, out_dir)
+
   if PROF:
     timings_s = timer_s.dump()
     print(f"\ttrain={np.median(timings_s['train']): .2f}s, test={np.median(timings_s['eval']): .2f}s")
@@ -125,7 +129,7 @@ def train_sb3_policy(config, E, policy, out_dir, PROF=False):
   return exp_rewards, episode_rewards, policy.metrics.items(), episode_trajectories, timer_s.dump()
 
 
-def train_policy(config, E, policy, optimiser, out_dir, PROF=False):
+def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
   # NOTE: all policies are responsible for preprocessing obs into input data
   exp_rewards = list()
   episode_rewards = list()
@@ -280,8 +284,8 @@ if __name__ == "__main__":
   # TODO: load optimisers
 
   # train policy on target environment
-  results = train_sb3_policy(config, E, policy, out_dir, True) if policy_type == "ppo" \
-    else train_policy(config, E, policy, optimiser, out_dir, True)
+  results = train_sb3_policy(config, E, policy, out_dir, device, True) if policy_type == "ppo" \
+    else train_policy(config, E, policy, optimiser, out_dir, device, True)
   E.close()
 
   exp_rewards, episode_rewards, train_metrics = results[:3]
