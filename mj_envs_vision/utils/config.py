@@ -5,7 +5,7 @@ import json
 import yaml
 
 
-class Config(json.JSONEncoder):
+class Config:
   def __init__(self):
     super().__init__()
 
@@ -15,6 +15,8 @@ class Config(json.JSONEncoder):
     self.device_type = 'cpu'
     self.disable_cuda = False
     self.models_path = ""
+    self.models_path_bootstrap = ""
+    self.bootstrap_interval = 1
     self.log_path = None
     self.nogui = True
     # Algorithm parameters
@@ -71,7 +73,7 @@ class Config(json.JSONEncoder):
   def save(self, filepath: str):
     fp = open(filepath, 'w')
     if "json" in filepath:
-        json.dump(Config().encode(self), fp, indent=2)
+        json.dump(self, fp, default=lambda x: x.__dict__, indent=2)
     else:
       raise Exception("only json configs are supported atm")
 
