@@ -211,7 +211,7 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
 
 
     # save model
-    if ep % config.checkpoint_interval == 0:
+    if ep > 0 and ep % config.checkpoint_interval == 0:
       policy.save(os.path.join(out_dir, f"{policy.name}-{config.state_type}-{config.env_name}-{ep}.pt"))
 
 
