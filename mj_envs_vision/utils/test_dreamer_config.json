@@ -1,0 +1,22 @@
+{
+    "run_id" : "walk-v",
+    "seed" : 3,
+    "env_name" : "Walker2d-v2",
+    "sample_iters" : 100,
+    "max_episodes" : 1000,
+    "max_episode_length" : 200,
+    "test_interval" : 500,
+    "checkpoint_interval" : 500,
+    "batch_size" : 32,
+    "batch_length" : 32,
+    "chunk_size" : 32,
+    "action_repeat" : 2,
+    "device_type" : "cuda",
+    "model_type" : "mlp",
+    "state_type" : "observation",
+    "actor_grad" : "dynamics",
+    "actor_dist": "tanh_normal",
+    "clip_rewards": "tanh",
+    "kl_weight": 2.0,
+    "entropy" : 1e-4
+}

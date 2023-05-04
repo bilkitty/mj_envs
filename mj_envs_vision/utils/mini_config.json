@@ -1,0 +1,18 @@
+{
+    "run_id" : "mini-ham",
+    "seed" : 3,
+    "env_name" : "hammer-v0",
+    "sample_iters" : 10,
+    "max_episodes" : 15,
+    "max_episode_length" : 10,
+    "test_interval" : 5,
+    "checkpoint_interval" : 10,
+    "batch_size" : 5,
+    "batch_length" : 5,
+    "chunk_size" : 5,
+    "action_repeat" : 1,
+    "model_type" : "mlp",
+    "device_type" : "cuda",
+    "state_type" : "observation",
+    "variation_type" : "size"
+}

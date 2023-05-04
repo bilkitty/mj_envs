@@ -1,0 +1,14 @@
+{
+    "run_id" : "door-s",
+    "seed" : 3,
+    "env_name" : "door-v0",
+    "sample_iters" : 100,
+    "max_episodes" : 100000,
+    "max_episode_length" : 200,
+    "test_interval" : 1000,
+    "batch_size" : 50,
+    "chunk_size" : 50,
+    "action_repeat" : 2,
+    "model_type" : "mlp",
+    "state_type" : "vector"
+}

@@ -2,6 +2,7 @@
 # various algorithms, envs, training and test
 # procedures
 import json
+import yaml
 
 
 class Config(json.JSONEncoder):
@@ -21,7 +22,7 @@ class Config(json.JSONEncoder):
     self.max_episodes = 1000
     self.max_episode_length = 500
     self.experience_size = 1000000
-    self.sample_iters = 1000
+    self.train_epochs = 1000
     self.test_interval = 100
     self.activation_fn = 'relu'
     self.action_noise = 0.3
@@ -70,8 +71,7 @@ class Config(json.JSONEncoder):
   def save(self, filepath: str):
     fp = open(filepath, 'w')
     if "json" in filepath:
-        #json.dump(Config().encode(self), fp, indent=2)
-        json.dump(Config(), fp, indent=2)
+        json.dump(Config().encode(self), fp, indent=2)
     else:
       raise Exception("only json configs are supported atm")
 
@@ -83,7 +83,7 @@ class Config(json.JSONEncoder):
 
   # TODO: get attr?
 
-class PlanetConfig(Config):
+class DefaultPlanetConfig(Config):
   def __init__(self):
     Config.__init__(self)
     self.belief_size = 200
@@ -96,20 +96,39 @@ class PlanetConfig(Config):
     self.free_nats = 3
     self.planning_horizon = 12
     self.optimisation_iters = 10
+    # collect_interval = 100 is analogous to training epochs
 
-class PPOConfig(Config):
+class DefaultPPOConfig(Config):
   def __init__(self):
     Config.__init__(self)
     self.model_type = "mlp"
+    self.entropy = 0.0
+
+
+class DefaultDreamerConfig(Config):
+
+  # TODO: pare down and save as yaml in this proj
+  default_config_path = "dependencies/DreamerV2/config/defaults.yaml"
+  def __init__(self):
+    Config.__init__(self)
+    with open(DefaultDreamerConfig.default_config_path, 'r') as fp:
+      multi_cfg = yaml.safe_load(fp)
+
+    for att, v in multi_cfg['defaults'].items():
+      self.__dict__[att] = v
 
 
 def load_config(config_path, policy_type):
   if policy_type == "ppo":
-    config = PPOConfig()
+    config = DefaultPPOConfig()
   elif policy_type == "planet":
-    config = PlanetConfig()
+    config = DefaultPlanetConfig()
+  elif policy_type == "dreamer":
+    config = DefaultDreamerConfig()
   else:
     config = Config()
+
+  # Override with config file
   config.load(config_path)
   print(config.str())
 
