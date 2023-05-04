@@ -34,11 +34,11 @@ SUPPORTED_POLICIES = ["default", "dapg", "planet", "ppo", "dreamer"]
 def make_baseline_policy(config: Config, policy_type: str, env: Env, device: torch.device):
   assert policy_type in SUPPORTED_POLICIES, f"Unsupported policy type '{policy_type}'"
   if policy_type == "default":
-    return MLPBaseline(config, env, is_random=True)
+    return MLPBaseline(config, env, name="default", is_random=True)
   elif policy_type == "dapg":
-    return MLPBaseline(config, env)
+    return MLPBaseline(config, env, name="dapg")
   elif policy_type == "ppo": # TODO: explicitly cast config
-    return PPOBaseline(config, env)
+    return PPOBaseline(config, action_size(env), observation_size(env), env, device)
   elif policy_type == "planet":
     return Planet(config, action_size(env), observation_size(env), env.action_space, device)
   elif policy_type == "dreamer":
@@ -59,11 +59,11 @@ def make_policy_optimisers(config: Config, policy_type: str, policy):
   return optims
 
 class MLPBaseline:
-  def __init__(self, config, custom_env: Env, is_random: bool = False):
+  def __init__(self, config, custom_env: Env, name: str, is_random: bool = False):
     assert not is_random or (is_random and config.models_path is None), "cannot be random if policy was specified"
 
     # TODO: support for images
-    self.name = "mlp"
+    self.name = name
     self.mlp = None
     self.is_random = is_random
     self.seed = config.seed
@@ -72,7 +72,6 @@ class MLPBaseline:
     self.observation_shape = custom_env.observation_space.shape
     self.models_path = config.models_path
     self.metrics = Metrics()
-    self.experience = None
     self.timer_ms = BasicTimer('ms')
 
   def reset(self, *args, **kwargs):
@@ -92,6 +91,7 @@ class MLPBaseline:
       self.mlp = MLP(self.env_spec, hidden_sizes=(32, 32), seed=self.seed, init_log_std=-1.0)
     else:
       self.mlp = pickle.load(open(self.models_path, 'rb'))
+      # TODO: would be nice to relax this assertion
       assert self.observation_shape[-1] == self.mlp.param_shapes[0][-1], "observation is incompatible with model input"
     return self.models_path
 
@@ -121,7 +121,7 @@ class PPOMetrics(Metrics):
 
 
 class PPOBaseline:
-  def __init__(self, config, custom_env: Env):
+  def __init__(self, config, action_size: int, observation_size: int, custom_env: Env, device: torch.device):
     self.name = "ppo"
     self.ppo = None
     self.env_name = config.env_name
@@ -137,6 +137,12 @@ class PPOBaseline:
     self.metrics = PPOMetrics(group_size=1)
     self.experience = None
     self.timer_ms = BasicTimer('ms')
+    self.experience = memory.ExperienceReplay(config.experience_size,
+                                         config.state_type == "vector",
+                                         observation_size,
+                                         action_size,
+                                         config.bit_depth,
+                                         device)
 
     if config.train_epochs > 10:
       print(f"WARN: consider decreasing train_epochs '{config.train_epochs}'")
@@ -195,6 +201,9 @@ class PPOBaseline:
     self.timer_ms.start("ppo-save")
     self.ppo.save(models_path)
     self.timer_ms.stop("ppo-save")
+
+  def record_experience(self, obs: torch.Tensor, action: torch.Tensor, rwd: float, done: bool):
+    self.experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
 
   def update(self) -> None:
     self.timer_ms.start("ppo-learn")

@@ -63,9 +63,9 @@ if __name__ == "__main__":
 
   # train policy on target environment
   if policy_type == "ppo":
-    results = train_sb3_policy(config, E, policy, out_dir, device)
+    results = train_sb3_policy(config, E, policy, out_dir, device, True)
   else:
-    results = train_policy(config, E, policy, optimiser, out_dir, device)
+    results = train_policy(config, E, policy, optimiser, out_dir, device, True)
   E.close()
 
   # save performance metrics
