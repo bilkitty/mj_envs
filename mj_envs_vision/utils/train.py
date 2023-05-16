@@ -98,7 +98,7 @@ def train_sb3_policy(config, E, policy, out_dir, device, PROF=False):
 
     # TODO: dump metrics to tensorboard
     train_metrics = policy.metrics.items()
-    summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
+    summary_metrics = {k:v[::config.test_interval] for k,v in train_metrics.items()}
     pkl.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.pkl"), "wb"))
     pkl.dump(exp_rewards, open(os.path.join(out_dir, f"train_rewards-{config.seed_episodes}.pkl"), "wb"))
     pkl.dump(episode_rewards, open(os.path.join(out_dir, f"eval_rewards-{config.seed_episodes}.pkl"), "wb"))
@@ -202,7 +202,7 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
 
       # TODO: dump metrics to tensorboard
       train_metrics = policy.metrics.items()
-      summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
+      summary_metrics = {k:v[::config.test_interval] for k,v in train_metrics.items()}
       pkl.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.pkl"), "wb"))
       pkl.dump(exp_rewards, open(os.path.join(out_dir, f"train_rewards-{config.seed_episodes}.pkl"), "wb"))
       pkl.dump(episode_rewards, open(os.path.join(out_dir, f"eval_rewards-{config.seed_episodes}.pkl"), "wb"))
@@ -211,7 +211,7 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
 
 
     # save model
-    if ep % config.checkpoint_interval == 0:
+    if ep > 0 and ep % config.checkpoint_interval == 0:
       policy.save(os.path.join(out_dir, f"{policy.name}-{config.state_type}-{config.env_name}-{ep}.pt"))
 
 
@@ -289,7 +289,7 @@ if __name__ == "__main__":
   E.close()
 
   exp_rewards, episode_rewards, train_metrics = results[:3]
-  summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
+  summary_metrics = {k:v[::config.test_interval] for k,v in train_metrics.items()}
   json.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.json"), "w"))
   pkl.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.pkl"), "wb"))
   pkl.dump(exp_rewards, open(os.path.join(out_dir, f"train_rewards-{config.seed_episodes}.pkl"), "wb"))

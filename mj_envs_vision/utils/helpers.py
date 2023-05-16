@@ -186,7 +186,7 @@ def plot_rewards(rewards: List[Tuple], yaxis_label="total reward"):
     ax.plot(ep, med, linestyle='solid', linewidth=0.5, label="median")
     ax.fill_between(ep, mu - std, mu + std, alpha=0.05)
 
-  ax.set_xlabel('epochs')
+  ax.set_xlabel('episodes')
   ax.set_ylabel(f'{yaxis_label} n=({rwd.shape[-1]})')
   ax.legend(loc='upper right')
   ax.set_box_aspect(1)
@@ -203,7 +203,7 @@ def plot_time(timings, max_epoch, y_axis_label="time"):
     ax.plot(np.linspace(0, max_epoch, v.shape[0], endpoint=False), v, linestyle='solid', linewidth=1, label=k)
     ax.scatter(np.linspace(0, max_epoch, v.shape[0], endpoint=False), v, marker='D', s=5)
 
-  ax.set_xlabel('epochs')
+  ax.set_xlabel('episodes')
   ax.set_ylabel(y_axis_label)
   fig.legend(loc='center right')
   ax.set_box_aspect(1)

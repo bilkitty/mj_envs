@@ -10,32 +10,14 @@ from mj_envs_vision.utils.train import train_sb3_policy
 from mj_envs_vision.utils.helpers import make_env
 from mj_envs_vision.algos.baselines import make_baseline_policy, make_policy_optimisers
 
-
-if __name__ == "__main__":
-  # load user defined parameters
-  if len(sys.argv) == 1:
-    config_path = "mj_envs_vision/utils/test_config.json"
-    policy_type = "ppo"
-  elif len(sys.argv) <= 2:
-    config_path = sys.argv[1]
-    policy_type = "ppo"
-  elif len(sys.argv) <= 3:
-    config_path = sys.argv[1]
-    policy_type = sys.argv[2]
-  else:
-    print("Usage:\n\trun.py [config_path] [policy_type]")
-    sys.exit(-1)
-
-  config = load_config(config_path, policy_type)
-
+def run(config, policy_type, out_dir, id=0):
   # validate params
   assert config.batch_size <= config.max_episode_length // config.action_repeat
   assert config.chunk_size <= config.max_episode_length // config.action_repeat
 
   # setup log dir
-  out_dir = os.path.join("results", f"run_{policy_type}_{config.run_id}")
   os.makedirs(out_dir, exist_ok=True)
-  print('\033[96m' + f"saving results to {out_dir}" + '\033[0m')
+  print('\033[96m' + f"saving results for to {out_dir}" + '\033[0m')
 
   np.random.seed(config.seed)
   torch.manual_seed(config.seed)
@@ -70,10 +52,30 @@ if __name__ == "__main__":
 
   # save performance metrics
   exp_rewards, episode_rewards, train_metrics = results[:3]
-  summary_metrics = {k:v[::config.checkpoint_interval] for k,v in train_metrics.items()}
+  summary_metrics = {k:v[::config.test_interval] for k,v in train_metrics.items()}
   json.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.json"), "w"))
   pkl.dump(summary_metrics, open(os.path.join(out_dir, f"train_metrics-{config.seed_episodes}.pkl"), "wb"))
   pkl.dump(exp_rewards, open(os.path.join(out_dir, f"train_rewards-{config.seed_episodes}.pkl"), "wb"))
   pkl.dump(episode_rewards, open(os.path.join(out_dir, f"eval_rewards-{config.seed_episodes}.pkl"), "wb"))
 
+
+
+if __name__ == "__main__":
+  # load user defined parameters
+  if len(sys.argv) == 1:
+    config_path = "mj_envs_vision/utils/test_config.json"
+    policy_type = "ppo"
+  elif len(sys.argv) <= 2:
+    config_path = sys.argv[1]
+    policy_type = "ppo"
+  elif len(sys.argv) <= 3:
+    config_path = sys.argv[1]
+    policy_type = sys.argv[2]
+  else:
+    print("Usage:\n\trun.py [config_path] [policy_type]")
+    sys.exit(-1)
+
+  config = load_config(config_path, policy_type)
+  out_dir = os.path.join("results", f"run_{policy_type}_{config.run_id}")
+  run(config, policy_type, out_dir)
   print("done :)")
