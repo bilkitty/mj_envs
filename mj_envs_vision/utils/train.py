@@ -198,7 +198,7 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
       episode_trajectories.append((ep, trajs))
       if config.state_type == "observation":
         visualise_trajectory(str(ep), trajs[-1], out_dir)  # select worst
-        visualise_trajectory(f"{ep}-init", [x[0] for x in trajs], out_dir)
+        visualise_trajectory(f"init-{ep}", [x[0] for x in trajs], out_dir)
 
       # TODO: dump metrics to tensorboard
       train_metrics = policy.metrics.items()

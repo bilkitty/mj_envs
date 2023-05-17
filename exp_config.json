@@ -1,0 +1,9 @@
+{
+    "results_path" : "simple-bootstrap",
+    "policy_types" : ["planet"],
+    "config_paths" : ["mini-pl.json"],
+    "hyper_parameters" : {
+        "bootstrap_interval" : ["int", [10, 50, 100]],
+        "models_path_bootstrap" : ["str", ["/home/bilkit/Workspace/mj_envs_vision/mj_envs_vision/algos/dapg_pretrained/hammer-v0.pickle"]]
+    }
+}

@@ -56,7 +56,7 @@ def main(config_path, out_path, policy_type, trials, variation_type, checkpoint_
     rwds, succs, trajs, _ = evaluate(config, pi, T, count=trials)
 
     visualise_trajectory(str(model_id), trajs[-1], out_path, prefix=f"trajectory_")  # select worst
-    visualise_trajectory(f"{model_id}-init", [x[0] for x in trajs], out_path, prefix=f"trajectory_")
+    visualise_trajectory(str(ep), [x[0] for x in trajs], out_path, prefix=f"init-trajectory_")
 
     rewards.append((model_id, rwds))
     successes.append((model_id, succs))

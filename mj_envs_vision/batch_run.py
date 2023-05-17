@@ -13,7 +13,6 @@ BASE_PATH = "/home/bilkit/Workspace/mj_envs_vision"
 
 
 def new_experiment(c, parameter: str, vals: List[Union[int, str, float]]):
-  assert len(vals) > 1
   param_sweep = list()
   for i, v in enumerate(vals):
     cnew = copy.deepcopy(c)
