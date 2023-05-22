@@ -18,6 +18,8 @@ from mj_envs_vision.utils.bootstrap import collect_offline_experience, collect_o
 from mj_envs_vision.algos.baselines import make_baseline_policy, make_policy_optimisers
 
 
+BOOTSTRAP_MECHANISM="switch"
+
 def train(config, policy, optimiser):
   # NOTE: there will be config.train_epochs x (config.max_episodes - config.seed_episodes + 1)
   # items in policy metrics.
@@ -59,6 +61,9 @@ def train_sb3_policy(config, E, policy, out_dir, device, PROF=False):
   if PROF: timer_s.stop("sim")
   n_samples = config.max_episode_length // config.action_repeat
 
+  if BOOTSTRAP_MECHANISM == "switch":
+    assert config.bootstrap_interval <= 100
+
   timer_ms.start("eval-init")
   test_env = make_env(config)
   timer_ms.stop("eval-init")
@@ -75,7 +80,12 @@ def train_sb3_policy(config, E, policy, out_dir, device, PROF=False):
       else:
         train_timings_ms[k] = [np.mean(v)]
 
-    collection_index = 1 + int(ep % config.bootstrap_interval == 0)
+    if BOOTSTRAP_MECHANISM == "switch":
+      collection_index = 2 if ep < (config.bootstrap_interval // 100 * config.max_episodes) else 1
+    elif BOOTSTRAP_MECHANISM == "alternate":
+      collection_index = 1 + int(ep % config.bootstrap_interval == 0)
+    else:
+      collection_index = 1
     train_reward, train_successes = collect_experience(E, collection_policies[:collection_index], n_samples)
 
     if PROF: timer_s.start("eval")
@@ -162,6 +172,9 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
   timer_ms.stop("eval-init")
   eval_timings_ms["eval-init"] = list(timer_ms.dump().values())
 
+  if BOOTSTRAP_MECHANISM == "switch":
+    assert config.bootstrap_interval <= 100
+
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
     if PROF: timer_s.start("train")
     train(config, policy, optimiser)
@@ -175,7 +188,12 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
 
     if PROF: timer_s.start("sim")
     # update bootstrap index
-    collection_index = 1 + int(ep % config.bootstrap_interval == 0)
+    if BOOTSTRAP_MECHANISM == "switch":
+      collection_index = 2 if ep < (config.bootstrap_interval // 100 * config.max_episodes) else 1
+    elif BOOTSTRAP_MECHANISM == "alternate":
+      collection_index = 1 + int(ep % config.bootstrap_interval == 0)
+    else:
+      collection_index = 1
     train_reward, train_successes = collect_experience(E, collection_policies[:collection_index], n_samples)
     if PROF: timer_s.stop("sim")
     exp_rewards.append((ep, [train_reward]))
