@@ -63,7 +63,7 @@ if __name__ == "__main__":
   with open(sys.argv[1], 'r') as fp:
     runs = json.load(fp)
 
-  out_dir = runs["out_dir"] + '/compare_' + '_'.join(runs["run_names"])
+  out_dir = runs["out_dir"] + 'compare_' + '_'.join(runs["run_names"])
   out_dir = out_dir.replace(" ", "-")
   print('\033[96m' + f"saving results to {out_dir}" + '\033[0m')
   os.makedirs(out_dir, exist_ok=True)

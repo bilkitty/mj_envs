@@ -33,7 +33,7 @@ def run(config, policy_type, out_dir, id=0):
   device = torch.device(config.device_type)
   policy = make_baseline_policy(config, policy_type, E, device)
   if config.models_path != "":
-    assert policy_type in config.models_path
+    #assert policy_type in config.models_path
     policy.load()
 
   optimiser = make_policy_optimisers(config, policy_type, policy)
