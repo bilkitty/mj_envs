@@ -18,7 +18,8 @@ from mj_envs_vision.utils.bootstrap import collect_offline_experience, collect_o
 from mj_envs_vision.algos.baselines import make_baseline_policy, make_policy_optimisers
 
 
-BOOTSTRAP_MECHANISM="switch"
+BOOTSTRAP_MECHANISMS=["switch", "switch-inv", "ross12", "hybrid", "offpolicy"]
+DEFAULT_MECHANISM="switch"
 
 def train(config, policy, optimiser):
   # NOTE: there will be config.train_epochs x (config.max_episodes - config.seed_episodes + 1)
@@ -46,6 +47,7 @@ def train_sb3_policy(config, E, policy, out_dir, device, PROF=False):
   eval_timings_ms["eval-init"] = list(timer_ms.dump().values())
 
   collection_policies = [policy]
+  mechanism = DEFAULT_MECHANISM
   if config.models_path_bootstrap:
     bootstrap_cfg = copy.copy(config)
     bootstrap_cfg.state_type = "vector"
@@ -53,16 +55,16 @@ def train_sb3_policy(config, E, policy, out_dir, device, PROF=False):
     bootstrap_env = make_env(bootstrap_cfg)
     collection_policies.append(make_baseline_policy(bootstrap_cfg, "dapg", bootstrap_env, device))
     collection_policies[1].load()
+    mechanism = config.bootstrap_mechanism or DEFAULT_MECHANISM
+    assert mechanism in BOOTSTRAP_MECHANISMS
+    assert config.bootstrap_interval <= 100
 
   # populate buffer with requested batch and chunk size
   print(f"Initialising experience replay with max(batch_size, chunk_size) samples")
   if PROF: timer_s.start("sim")
-  collect_experience(E, collection_policies[:1], sample_count=config.batch_size * config.chunk_size)
+  collect_experience(E, collection_policies, "onpolicy", sample_count=config.batch_size * config.chunk_size)
   if PROF: timer_s.stop("sim")
   n_samples = config.max_episode_length // config.action_repeat
-
-  if BOOTSTRAP_MECHANISM == "switch":
-    assert config.bootstrap_interval <= 100
 
   timer_ms.start("eval-init")
   test_env = make_env(config)
@@ -80,13 +82,13 @@ def train_sb3_policy(config, E, policy, out_dir, device, PROF=False):
       else:
         train_timings_ms[k] = [np.mean(v)]
 
-    if BOOTSTRAP_MECHANISM == "switch":
-      collection_index = 2 if ep < (config.bootstrap_interval // 100 * config.max_episodes) else 1
-    elif BOOTSTRAP_MECHANISM == "alternate":
-      collection_index = 1 + int(ep % config.bootstrap_interval == 0)
+    if mechanism == "switch-inv":
+      collect_from = "onpolicy" if ep < int(config.bootstrap_interval / 100 * config.max_episodes) else "offpolicy"
+    elif mechanism == "switch":
+      collect_from = "offpolicy" if ep < int(config.bootstrap_interval / 100 * config.max_episodes) else "onpolicy"
     else:
-      collection_index = 1
-    train_reward, train_successes = collect_experience(E, collection_policies[:collection_index], n_samples)
+      collect_from = mechanism
+    train_reward, train_successes = collect_experience(E, collection_policies, collect_from, n_samples)
 
     if PROF: timer_s.start("eval")
     policy.set_models_to_eval()
@@ -152,6 +154,7 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
   eval_timings_ms = dict()
 
   collection_policies = [policy]
+  mechanism = DEFAULT_MECHANISM
   if config.models_path_bootstrap:
     bootstrap_cfg = copy.copy(config)
     bootstrap_cfg.state_type = "vector"
@@ -159,11 +162,14 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
     bootstrap_env = make_env(bootstrap_cfg)
     collection_policies.append(make_baseline_policy(bootstrap_cfg, "dapg", bootstrap_env, device))
     collection_policies[1].load()
+    mechanism = config.bootstrap_mechanism or DEFAULT_MECHANISM
+    assert mechanism in BOOTSTRAP_MECHANISMS
+    assert config.bootstrap_interval <= 100
 
   # populate buffer with requested batch and chunk size
   print(f"Initialising experience replay with max(batch_size, chunk_size) samples")
   if PROF: timer_s.start("sim")
-  collect_experience(E, collection_policies[:1], sample_count=config.batch_size * config.chunk_size)
+  collect_experience(E, collection_policies, "onpolicy", sample_count=config.batch_size * config.chunk_size)
   if PROF: timer_s.stop("sim")
   n_samples = config.max_episode_length // config.action_repeat
 
@@ -171,9 +177,6 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
   test_env = make_env(config)
   timer_ms.stop("eval-init")
   eval_timings_ms["eval-init"] = list(timer_ms.dump().values())
-
-  if BOOTSTRAP_MECHANISM == "switch":
-    assert config.bootstrap_interval <= 100
 
   for ep in tqdm(range(config.seed_episodes, config.max_episodes + 1)): # TODO: add total and initial?
     if PROF: timer_s.start("train")
@@ -187,14 +190,13 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
     # TODO: dump metrics to tensorboard
 
     if PROF: timer_s.start("sim")
-    # update bootstrap index
-    if BOOTSTRAP_MECHANISM == "switch":
-      collection_index = 2 if ep < (config.bootstrap_interval // 100 * config.max_episodes) else 1
-    elif BOOTSTRAP_MECHANISM == "alternate":
-      collection_index = 1 + int(ep % config.bootstrap_interval == 0)
+    if mechanism == "switch-inv":
+      collect_from = "onpolicy" if ep < int(config.bootstrap_interval / 100 * config.max_episodes) else "offpolicy"
+    elif mechanism == "switch":
+      collect_from = "offpolicy" if ep < int(config.bootstrap_interval / 100 * config.max_episodes) else "onpolicy"
     else:
-      collection_index = 1
-    train_reward, train_successes = collect_experience(E, collection_policies[:collection_index], n_samples)
+      collect_from = mechanism
+    train_reward, train_successes = collect_experience(E, collection_policies, collect_from, n_samples)
     if PROF: timer_s.stop("sim")
     exp_rewards.append((ep, [train_reward]))
     exp_successes.append((ep, [train_successes]))
@@ -255,11 +257,17 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
   return exp_rewards, episode_rewards, policy.metrics.items(), episode_trajectories, timer_s.dump()
 
 
-def collect_experience(E, policies, sample_count):
-  if len(policies) == 1:
+def collect_experience(E, policies, collect_from, sample_count):
+  if collect_from == "hybrid" or collect_from == "ross12":
+    rwd1, suc1 = collect_online_experience(E, policies[0], sample_count//2)
+    rwd2, suc2 = collect_offline_experience(E, *policies, sample_count//2)
+    return (rwd1 + rwd2), (suc1 | suc2)
+  elif collect_from == "offpolicy":
+    return collect_offline_experience(E, *policies, sample_count)
+  elif collect_from == "onpolicy":
     return collect_online_experience(E, policies[0], sample_count)
   else:
-    return collect_offline_experience(E, *policies, sample_count)
+    raise Exception(f"unknown argument collect_from {collect_from}")
 
 
 if __name__ == "__main__":
