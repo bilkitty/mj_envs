@@ -1,6 +1,8 @@
 dependencies/
 results/
+checkpoints/
 mj_envs_vision/algos/dapg_pretrained/
+mj_envs_vision.egg-info/
 #
 # generic restrictions
 #
