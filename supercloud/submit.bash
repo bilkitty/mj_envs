@@ -22,7 +22,7 @@ if [ ! -d "$MUJOCO_ENV" ]; then
     echo "~~ copying $MUJOCO_ENV_HOME to $MUJOCO_ENV ~~"
     mkdir -p /state/partition1/user/$USER
     #cp -r $MUJOCO_ENV_HOME $MUJOCO_ENV
-    unzip "$MUJOCO_ENV_HOME.zip" -d $MUJOCO_ENV
+    unzip "mujoco_env.zip" -d $MUJOCO_ENV
 fi
 
 # Load an anaconda module, then activate your mujoco environment

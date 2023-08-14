@@ -13,8 +13,9 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/nvidia:$HOME/.mujoco/mujoco210/
 # Check if the environment exists on the local disk. If not copy it over from the home directory.
 if [ ! -d "$MUJOCO_ENV" ]; then
     echo "~~ copying $MUJOCO_ENV_HOME to $MUJOCO_ENV ~~"
-    mkdir /state/partition1/user/$USER
-    cp -r $MUJOCO_ENV_HOME $MUJOCO_ENV
+    mkdir -p /state/partition1/user/$USER
+    #cp -r $MUJOCO_ENV_HOME $MUJOCO_ENV
+    unzip "mujoco_env.zip" -d $MUJOCO_ENV
 fi
 
 # Load an anaconda module, then activate your mujoco environment

@@ -20,4 +20,4 @@ source /mj_envs_vision/setup.bash
 unset LD_PRELOAD
 pip install --no-cache-dir -r requirements.txt
 
-zip -r 
+zip -r mujoco_env.zip $HOME/software/mujoco/mujoco_env
