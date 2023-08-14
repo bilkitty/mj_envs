@@ -36,7 +36,7 @@ if __name__ == "__main__":
   elif len(sys.argv) <= 2:
     config_path = sys.argv[1]
   else:
-    print("Usage:\n\trun.py [config_path]")
+    print("Usage:\n\tbatch_run.py [config_path]")
     sys.exit(-1)
 
   exps = dict()
@@ -45,7 +45,7 @@ if __name__ == "__main__":
   for policy_type, config_file in zip(exps_spec["policy_types"], exps_spec["config_paths"]):
     exps[policy_type] = [dict(run_id=f"-{policy_type}")]
 
-    # take cartesian product of hyper parameter settings
+    # take cartesian product of hyperparameter settings
     if "hyper_parameters" in exps_spec.keys():
       for id, (k, v) in enumerate(exps_spec["hyper_parameters"].items()):
         if v[0] == "str":

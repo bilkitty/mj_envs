@@ -1,9 +1,0 @@
-{
-    "results_path" : "sweep_train_epoch",
-    "policy_types" : ["dreamer", "planet"],
-    "config_paths" : ["mini-dreamer.json", "mini-pl.json"],
-    "hyper_parameters" : {
-        "seed" : ["int", [123,12312,123123]],
-        "train_epochs" : ["int", [100, 50, 10, 5]]
-    }
-}

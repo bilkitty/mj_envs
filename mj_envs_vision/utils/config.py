@@ -18,6 +18,7 @@ class Config:
     self.models_path_bootstrap = ""
     self.bootstrap_interval = 1
     self.bootstrap_mechanism = None
+    self.bootstrap_factor_inv = 1
     self.log_path = None
     self.nogui = True
     # Algorithm parameters
