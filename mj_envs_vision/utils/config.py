@@ -42,6 +42,9 @@ class Config:
     self.action_repeat = 2
     self.state_type = 'observation'
     self.variation_type = None
+    self.image_width = 64
+    self.image_height = 64
+    self.enable_resize = True
     self.bit_depth = 5
     # Memory parameters
     self.batch_size = 50

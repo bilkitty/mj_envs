@@ -100,7 +100,7 @@ def step(env, action: torch.FloatTensor):
 
 def make_env(config):
     assert is_valid_env(config.env_name)
-    render_kwargs = dict(render_mode='rgb_array', width=64, height=64)
+    render_kwargs = dict(render_mode='rgb_array', width=config.image_width, height=config.image_height)
     if is_from_adroit_suite(config.env_name):
       e = gym_make(config.env_name,
                    is_headless=config.nogui,
@@ -113,12 +113,13 @@ def make_env(config):
     if isinstance(e, TimeLimit):
       e = e.env
 
+    render_kwargs.update(enable_resize=config.enable_resize)
     if not config.nogui:
       return GuiObservationWrapper(e)
     elif config.state_type == "observation":
-      return CustomPixelObservationWrapper(e)
+      return CustomPixelObservationWrapper(e, render_kwargs=dict(pixels=render_kwargs))
     elif config.state_type == "vector":
-      return CustomPixelObservationWrapper(e, obs_key=STATE_KEY)
+      return CustomPixelObservationWrapper(e, obs_key=STATE_KEY, render_kwargs=dict(pixels=render_kwargs))
     else:
       raise Exception(f"Unsupported state type '{config.state_type}'")
 

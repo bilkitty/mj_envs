@@ -18,7 +18,7 @@ from mj_envs_vision.utils.bootstrap import collect_offline_experience, collect_o
 from mj_envs_vision.algos.baselines import make_baseline_policy, make_policy_optimisers
 
 
-BOOTSTRAP_MECHANISMS=["switch", "switch-inv", "ross12", "hybrid", "offpolicy"]
+BOOTSTRAP_MECHANISMS=["switch", "switch-inv", "ross", "hybrid", "offpolicy", "toggle"]
 DEFAULT_MECHANISM="switch"
 
 def train(config, policy, optimiser):
@@ -194,9 +194,13 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
       collect_from = "onpolicy" if ep < int(config.bootstrap_interval / 100 * config.max_episodes) else "offpolicy"
     elif mechanism == "switch":
       collect_from = "offpolicy" if ep < int(config.bootstrap_interval / 100 * config.max_episodes) else "onpolicy"
+    elif mechanism == "toggle":
+      collect_from = "onpolicy" if ep // int(config.bootstrap_interval / 100 * config.max_episodes) % 2 == 0 else "offpolicy"
     else:
       collect_from = mechanism
-    train_reward, train_successes = collect_experience(E, collection_policies, collect_from, n_samples)
+    # todo: make this slowly increase
+    collect_size = n_samples//config.bootstrap_factor_inv if "switch" in mechanism else n_samples # stops just before task completion
+    train_reward, train_successes = collect_experience(E, collection_policies, collect_from, collect_size)
     if PROF: timer_s.stop("sim")
     exp_rewards.append((ep, [train_reward]))
     exp_successes.append((ep, [train_successes]))
@@ -258,7 +262,7 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
 
 
 def collect_experience(E, policies, collect_from, sample_count):
-  if collect_from == "hybrid" or collect_from == "ross12":
+  if collect_from == "hybrid" or collect_from == "ross":
     rwd1, suc1 = collect_online_experience(E, policies[0], sample_count//2)
     rwd2, suc2 = collect_offline_experience(E, *policies, sample_count//2)
     return (rwd1 + rwd2), (suc1 | suc2)

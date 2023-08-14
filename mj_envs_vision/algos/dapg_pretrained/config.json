@@ -11,5 +11,8 @@
     "chunk_size" : 5,
     "action_repeat" : 1,
     "model_type" : "mlp",
-    "state_type" : "vector"
+    "state_type" : "vector",
+    "image_width" : 640,
+    "image_height" : 480,
+    "enable_resize" : true
 }

@@ -150,6 +150,6 @@ class RelocateEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
 
     def render(self, *args, **kwargs):
         if self.is_headless:
-            return self.observer.render(args, kwargs)
+            return self.observer.render(args, **kwargs)
         else:
             self.viewer.render()
