@@ -1,6 +1,6 @@
 import os
 import click
-import pickle
+import time
 import torch
 from tqdm import tqdm
 from gym.wrappers.time_limit import TimeLimit
@@ -12,6 +12,7 @@ from mj_envs_vision.utils.helpers import make_env, reset, step
 max_door_offset = 25 # the number of iterations after which door policy freezes
 horizons = {"door": 200, "pen": 200, "relocate": 200, "hammer": 200}
 GIF_DURATION = 15
+INITIAL_DELAY = 30
 DESC = '''
 Helper script to visualize policy (in mjrl format).\n
 USAGE:\n
@@ -28,10 +29,11 @@ USAGE:\n
 @click.option('--seed', type=int, help='seed for generating environment instances', default=123)
 @click.option('--episodes', type=int, help='number of episodes to visualize', default=1)
 @click.option('--save_mode', type=int, default=1, help='flag to save renderings (0=no save, 1=save)')
+@click.option('--sim_hz', type=int, default=10, help='frequency of simulation steps')
 @click.option('--variation_type', type=str, help='variation type for env parameters {mass, size, pos}', default=None)
 
 
-def main(env_name, policy, mode, seed, episodes, save_mode, variation_type):
+def main(env_name, policy, mode, seed, episodes, save_mode, variation_type, sim_hz):
     # parse policy type
     config_path = "/home/bilkit/Workspace/mj_envs_vision/mj_envs_vision/utils/mini_config.json"
     if policy is None:
@@ -47,7 +49,7 @@ def main(env_name, policy, mode, seed, episodes, save_mode, variation_type):
         config_path = os.path.join(os.path.dirname(policy), "config.json")
 
     if save_mode == 1 and "LD_PRELOAD" in os.environ and os.environ["LD_PRELOAD"] != "":
-        raise Exception("Ensure that EGL is available. Use command 'unset $LD_PRELOAD'.")
+        raise Exception("Ensure that EGL is available. Use command 'unset LD_PRELOAD'.")
 
     # setup env and policy with default (training) parameters
     config = load_config(config_path, policy_type)
@@ -67,12 +69,12 @@ def main(env_name, policy, mode, seed, episodes, save_mode, variation_type):
     if save_mode == 1:
         record_policy(e, episodes, pi, env_name, policy_name='-'.join(policy.split('.')[0].split('/')[-2:]))
     else:
-        visualise_policy(e, episodes, env_name, mode, pi)
+        visualise_policy(e, episodes, env_name, mode, sim_hz, pi)
 
     print(f"done")
 
 
-def visualise_policy(e, episodes, env_name, mode, pi):
+def visualise_policy(e, episodes, env_name, mode, sim_hz, pi):
     env_base_name = env_name.split('-')[0]
     e.unwrapped.mujoco_render_frames = True
     for ep in range(episodes):
@@ -85,20 +87,21 @@ def visualise_policy(e, episodes, env_name, mode, pi):
         if 'door' in env_name or 'hammer' in env_name:
             offset = max_door_offset - 3
         else:
-            offset = horizons[env_base_name] / 10
+            offset = INITIAL_DELAY
 
         while t < offset:
             a_zeros = pi.sample_action(o) * 0
             step(e, a_zeros)
             t = t+1
 
-        d = False
         score = 0.0
-        while t < horizons[env_base_name] and d == False:
+        while t < horizons[env_base_name]:
             a = pi.sample_action(o) if mode == 'exploration' else pi.act(o)
             o, r, d = step(e, a)[:3]
             t = t+1
             score = score + r
+            if sim_hz > 0:
+                time.sleep(1/sim_hz)
         print("Episode score = %f" % score)
         # TODO:  prompt for moving on
     e.unwrapped.mujoco_render_frames = False
