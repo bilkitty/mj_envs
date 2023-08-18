@@ -1,0 +1,13 @@
+{
+    "run_id" : "hammer-v",
+    "seed" : 357,
+    "env_name" : "hammer-v0",
+    "train_epochs" : 100,
+    "max_episodes" : 10,
+    "max_episode_length" : 200,
+    "batch_size" : 50,
+    "chunk_size" : 50,
+    "action_repeat" : 2,
+    "state_type" : "observation",
+    "models_path" : "/home/bilkit/Workspace/mj_envs_vision/results/irg-gpu/train_dreamer_hammer-v-10k"
+}

@@ -1,0 +1,23 @@
+{
+    "run_id" : "test-perf",
+    "seed" : 3,
+    "seed_episodes" : 0,
+    "env_name" : "hammer-v0",
+    "train_epochs" : 5,
+    "max_episodes" : 1000,
+    "max_episode_length" : 200,
+    "test_interval" : 100,
+    "checkpoint_interval" : 500,
+    "batch_size" : 32,
+    "batch_length" : 32,
+    "chunk_size" : 32,
+    "action_repeat" : 2,
+    "model_type" : "mlp",
+    "device_type" : "cuda:0",
+    "state_type" : "observation",
+    "actor_grad" : "dynamics",
+    "actor_dist": "tanh_normal",
+    "clip_rewards": "tanh",
+    "kl_weight": 2.0,
+    "entropy" : 1e-4
+}

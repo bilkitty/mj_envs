@@ -1,0 +1,10 @@
+{
+    "d_figure" : [15, 20],
+    "max_episodes" : 4000,
+    "out_dir" : "/home/bilkit/Workspace/mj_envs_vision/results",
+    "run_names" : ["ppo @ 100k", "ppo*", "ppo"],
+    "proportions" : [0.1, 0.1, 0.1],
+    "train_metrics_comparison" : ["run_ppo_ham-v-entropy/train_metrics.pkl", "run_ppo_ham-v-entropy/train_metrics.pkl", "run_ppo_ham-v/train_metrics.pkl"],
+    "eval_comparison" : ["run_ppo_ham-v-entropy/eval_rewards.pkl", "run_ppo_ham-v-entropy/eval_rewards.pkl", "run_ppo_ham-v/eval_rewards.pkl"],
+    "time_comparison" : ["run_ppo_ham-v-entropy/timings.pkl", "run_ppo_ham-v-entropy/timings.pkl", "run_ppo_ham-v/timings.pkl"]
+}

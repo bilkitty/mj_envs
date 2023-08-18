@@ -1,0 +1,15 @@
+{
+    "d_figure" : [15, 20],
+    "out_dir" : "/home/bilkit/Workspace/mj_envs_vision/results/simple-bootstrap-switch-50pct/",
+    "run_names" : ["dreamer-50", "planet-50"],
+    "proportions" : [0.25, 0.25],
+    "train_metrics_comparison" : [
+      "simple-bootstrap-switch-50pct/hammer-v-dreamer-max_episodes-1-test_interval-1-checkpoint_interval-1-entropy-1-bootstrap_interval-1-models_path_bootstrap-1/train_metrics-0.pkl",
+      "simple-bootstrap-switch-50pct/ham-v-planet-device_type-1-bootstrap_interval-1-models_path_bootstrap-1/train_metrics-0.pkl"],
+    "eval_comparison" : [
+      "simple-bootstrap-switch-50pct/hammer-v-dreamer-max_episodes-1-test_interval-1-checkpoint_interval-1-entropy-1-bootstrap_interval-1-models_path_bootstrap-1/eval_rewards-0.pkl",
+      "simple-bootstrap-switch-50pct/ham-v-planet-device_type-1-bootstrap_interval-1-models_path_bootstrap-1/eval_rewards-0.pkl"],
+    "train_comparison" : [
+      "simple-bootstrap-switch-50pct/hammer-v-dreamer-max_episodes-1-test_interval-1-checkpoint_interval-1-entropy-1-bootstrap_interval-1-models_path_bootstrap-1/train_rewards-0.pkl",
+      "simple-bootstrap-switch-50pct/ham-v-planet-device_type-1-bootstrap_interval-1-models_path_bootstrap-1/train_rewards-0.pkl"]
+}

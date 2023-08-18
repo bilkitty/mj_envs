@@ -1,0 +1,16 @@
+{
+   "results_path" : "bootstrap-earlystop-long",
+   "policy_types" : ["planet", "dreamer"],
+   "config_paths" : [
+     "$PROJECT_ROOT/config/offline_planet.json",
+     "$PROJECT_ROOT/config/offline_dreamer.json"
+   ],
+   "models_path_bootstrap" : ["$PROJECT_ROOT/mj_envs_vision/algos/dapg_pretrained/hammer-v0.pickle"],
+   "hyper_parameters" : {
+     "max_episodes" : ["int", [1000000]],
+     "bootstrap_mechanism" : ["str", ["ross12", "toggle"]],
+     "bootstrap_interval" : ["int", [10]],
+     "bootstrap_factor_inv" : ["int", [1, 3]]
+   }
+}
+

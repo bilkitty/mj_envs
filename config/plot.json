@@ -1,0 +1,10 @@
+{
+    "d_figure" : [15, 20],
+    "out_dir" : "/home/bilkit/Workspace/mj_envs_vision/results",
+    "run_names" : ["planet", "dreamer-detach"],
+    "proportions" : [0.5, 0.5],
+    "train_metrics_comparison" : ["run_planet_ham-v/train_metrics.pkl","run_dreamer_ham-v-dynamics-detach/train_metrics.pkl"],
+    "eval_comparison" : ["run_planet_ham-v/eval_rewards.pkl", "run_dreamer_ham-v-dynamics-detach/eval_rewards.pkl"],
+    "train_comparison" : ["run_planet_ham-v/train_rewards.pkl", "run_dreamer_ham-v-dynamics-detach/train_rewards.pkl"],
+    "time_comparison" : ["run_planet_ham-v/timings.pkl", "run_dreamer_ham-v-dynamics-detach/timings.pkl"]
+}

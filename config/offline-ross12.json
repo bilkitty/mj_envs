@@ -1,0 +1,15 @@
+{
+   "results_path" : "bootstrap-earlystop",
+   "policy_types" : ["planet"],
+   "config_paths" : [
+     "offline_planet.json"
+   ],
+   "models_path_bootstrap" : ["$PROJECT_ROOT/mj_envs_vision/algos/dapg_pretrained/hammer-v0.pickle"],
+   "hyper_parameters" : {
+     "max_episodes" : ["int", [10000]],
+     "bootstrap_mechanism" : ["str", ["toggle"]],
+     "bootstrap_interval" : ["int", [10, 20]],
+     "bootstrap_factor_inv" : ["int", [3, 4]]
+   }
+}
+

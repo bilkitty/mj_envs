@@ -9,7 +9,7 @@ from mj_envs_vision.utils.config import load_config
 from mj_envs_vision.run import run
 
 
-BASE_PATH = "/home/bilkit/Workspace/mj_envs_vision"
+BASE_PATH = os.path.expandvars("$PROJECT_ROOT")
 
 
 def new_experiment(c, parameter: str, vals: List[Union[int, str, float]]):
@@ -77,7 +77,7 @@ if __name__ == "__main__":
 
   # TODO: more clever staggering of processes to avoid gaps left by fast algos
   for policy_type, config_file in zip(exps_spec["policy_types"], exps_spec["config_paths"]):
-    default_config = load_config(os.path.join(BASE_PATH, config_file), policy_type)
+    default_config = load_config(os.path.expandvars(config_file), policy_type)
     for i, exp in enumerate(exps[policy_type]):
       exp_config = copy.deepcopy(default_config)
       exp_config.__dict__.update(exp)

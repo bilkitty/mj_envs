@@ -2,6 +2,8 @@
 # various algorithms, envs, training and test
 # procedures
 import json
+import os.path
+
 import yaml
 
 
@@ -69,7 +71,10 @@ class Config:
 
     for att, v in cfg.items():
       if att in list(self.__dict__.keys()):
-        self.__dict__[att] = v
+        if "_path" in att:
+          self.__dict__[att] = os.path.expandvars(v)
+        else:
+          self.__dict__[att] = v
       else:
         print(f"No such config field, '{att}'.")
 
@@ -115,7 +120,7 @@ class DefaultPPOConfig(Config):
 class DefaultDreamerConfig(Config):
 
   # TODO: pare down and save as yaml in this proj
-  default_config_path = "dependencies/DreamerV2/config/defaults.yaml"
+  default_config_path = os.path.expandvars("$PROJECT_ROOT/dependencies/DreamerV2/config/defaults.yaml")
   def __init__(self):
     Config.__init__(self)
     with open(DefaultDreamerConfig.default_config_path, 'r') as fp:

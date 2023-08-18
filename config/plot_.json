@@ -1,0 +1,10 @@
+{
+    "d_figure" : [15, 20],
+    "out_dir" : "/home/bilkit/Workspace/mj_envs_vision/results",
+    "run_names" : ["planet", "dreamer", "ppo"],
+    "proportions" : [0.3, 0.4, 0.3],
+    "train_metrics_comparison" : ["irg-gpu/results-planet/run_planet_ham-v-4k/train_metrics.pkl","irg-gpu/results-dreamer/run_dreamer_ham-v-dynamics/train_metrics.pkl", "run_ppo_ham-v/train_metrics.pkl"],
+    "eval_comparison" : ["irg-gpu/results-planet/run_planet_ham-v-4k/eval_rewards.pkl", "irg-gpu/results-dreamer/run_dreamer_ham-v-dynamics/eval_rewards.pkl", "run_ppo_ham-v/eval_rewards.pkl"],
+    "train_comparison" : ["irg-gpu/results-planet/run_planet_ham-v-4k/train_rewards.pkl", "irg-gpu/results-dreamer/run_dreamer_ham-v-dynamics/train_rewards.pkl", "run_ppo_ham-v/train_rewards.pkl"],
+    "time_comparison" : ["irg-gpu/results-planet/run_planet_ham-v-4k/timings.pkl", "irg-gpu/results-dreamer/run_dreamer_ham-v-dynamics/timings.pkl", "run_ppo_ham-v/timings.pkl"]
+}
