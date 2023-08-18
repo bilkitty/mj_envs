@@ -7,7 +7,8 @@
 
 echo "~~ working dir: '$(pwd)' ~~"
 
-run_script="mj_envs_vision/mj_envs_vision/batch_run.py mj_envs_vision/config/supercloud.json"
+# TEST
+run_script="mj_envs_vision/mj_envs_vision/run.py mj_envs_vision/config/mini-ppo.json ppo"
 
 # Set some useful environment variables
 export MUJOCO_ENV_HOME=/state/partition1/user/$USER
