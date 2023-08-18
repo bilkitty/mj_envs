@@ -20,7 +20,7 @@ class HeadlessObserver(utils.EzPickle):
     def mj_viewer_headless_setup(self):
         # configure simulation cam (instantiates camera)
         # instantiates mujoco_py.cymj.MjRenderContextOffscreen object
-        self.sim.render(self.NATIVE_W, self.NATIVE_W)
+        self.sim.render(self.NATIVE_W, self.NATIVE_H)
         self.sim.forward()
 
         # NOTE: rendered image  starts clipping at d < 4.5

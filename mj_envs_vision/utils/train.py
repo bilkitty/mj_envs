@@ -19,7 +19,7 @@ from mj_envs_vision.algos.baselines import make_baseline_policy, make_policy_opt
 
 
 BOOTSTRAP_MECHANISMS=["switch", "switch-inv", "ross", "hybrid", "offpolicy", "toggle"]
-DEFAULT_MECHANISM="switch"
+DEFAULT_MECHANISM="onpolicy" # don't change this
 
 def train(config, policy, optimiser):
   # NOTE: there will be config.train_epochs x (config.max_episodes - config.seed_episodes + 1)
@@ -106,7 +106,7 @@ def train_sb3_policy(config, E, policy, out_dir, device, PROF=False):
     episode_trajectories.append((ep, trajs))
     if config.state_type == "observation":
       visualise_trajectory(str(ep), trajs[-1], out_dir)  # select worst
-      visualise_trajectory(f"{ep}-init", [x[0] for x in trajs], out_dir)
+      visualise_trajectory(f"init-{ep}", [x[0] for x in trajs], out_dir)
 
     # TODO: dump metrics to tensorboard
     train_metrics = policy.metrics.items()
