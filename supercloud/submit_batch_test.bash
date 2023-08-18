@@ -15,7 +15,8 @@ export MUJOCO_ENV_HOME=/state/partition1/user/$USER
 export MUJOCO_ENV=/state/partition1/user/$USER/mujoco_env
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/nvidia:$HOME/.mujoco/mujoco210/bin
 export CFLAGS="-I/home/gridsan/bgithinji/glew-install/include"
-export CUDA_VISIBLE_DEVICES=0
+# override spec in setup.bash
+#export CUDA_VISIBLE_DEVICES=0
 
 # Check if the environment exists on the local disk. If not copy it over from the home directory.
 if [ ! -d "$MUJOCO_ENV" ]; then
