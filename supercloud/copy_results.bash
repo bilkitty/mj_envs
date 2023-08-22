@@ -1,5 +1,5 @@
 PROJECT_ROOT="/home/bilkit/Workspace/mj_envs_vision/results/supercloud"
-SUPER_ROOT="/home/gridsan/bgithinji/results"
+SUPER_ROOT="/home/gridsan/bgithinji/mj_envs_vision/results"
 SUPER_HOST="bgithinji@txe1-login.mit.edu"
 
 echo "copying new results from"

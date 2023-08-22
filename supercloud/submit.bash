@@ -28,3 +28,12 @@ fi
 
 echo "~~ check packages ~~"
 pip list | grep mjrl
+
+# Project setup
+pip install --no-cache-dir -r $HOME/mj_envs_vision/requirements.txt
+source $HOME/mj_envs_vision/setup.bash
+unset LD_PRELOAD
+
+echo "~~ CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES ~~"
+python -c "import torch;print(f'~~ cuda.is_available: {torch.cuda.is_available()} ~~')"
+python -c "import torch;print(f'~~ cuda.device_count: {torch.cuda.device_count()} ~~')"
