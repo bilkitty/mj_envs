@@ -66,7 +66,7 @@ def main(config_path, out_path, policy_type, trials, variation_type, checkpoint_
       print(f"~~~~~ sharing strategy {torch.multiprocessing.get_sharing_strategy()}")
       print(f"Enabled multi-core processing ({multiprocessing.cpu_count() // CORE_BATCHES} cores) of {trials} trials.")
       rwds, succs, trajs, _ = evaluate_parallel(config, pi, count=trials)
-      traj = [[(xx, None, None) for xx in x] for x in trajs]
+      trajs = [[(xx, None, None) for xx in x] for x in trajs]
     else:
       rwds, succs, trajs, _ = evaluate(config, pi, T, count=trials)
 
@@ -126,7 +126,7 @@ def evaluate_parallel(config, policy, count=10):
     core_count = multiprocessing.cpu_count() // CORE_BATCHES
     # need spawn context in order to render in child processes
     context = multiprocessing.get_context('spawn')
-    worker_pool = pool.Pool(processes=core_count, context=context, maxtasksperchild=None)
+    worker_pool = pool.Pool(processes=core_count, context=context, maxtasksperchild=10)
     print(f"running {count // core_count} batches of trials")
     for i in range(count // core_count):
       worker_args = list(zip([config] * core_count, [policy] * core_count, range(core_count)))
