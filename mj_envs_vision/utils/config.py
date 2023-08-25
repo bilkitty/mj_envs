@@ -15,6 +15,7 @@ class Config:
     self.run_id = 0
     self.seed = 0
     self.device_type = 'cpu'
+    self.device_is_multicore = False
     self.disable_cuda = False
     self.models_path = ""
     self.models_path_bootstrap = ""

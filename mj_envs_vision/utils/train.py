@@ -13,7 +13,7 @@ from mj_envs_vision.utils.helpers import make_env
 from mj_envs_vision.utils.helpers import reset, step
 from mj_envs_vision.utils.helpers import BasicTimer
 from mj_envs_vision.utils.config import load_config
-from mj_envs_vision.utils.eval import evaluate
+from mj_envs_vision.utils.eval import evaluate, evaluate_parallel
 from mj_envs_vision.utils.bootstrap import collect_offline_experience, collect_online_experience
 from mj_envs_vision.algos.baselines import make_baseline_policy, make_policy_optimisers
 
@@ -92,7 +92,10 @@ def train_sb3_policy(config, E, policy, out_dir, device, PROF=False):
 
     if PROF: timer_s.start("eval")
     policy.set_models_to_eval()
-    rewards, successes, trajs, eval_timings = evaluate(config, policy, test_env, count=10, should_time=PROF)
+    if config.device_is_multicore:
+      rewards, successes, trajs, eval_timings = evaluate_parallel(config, policy, count=10)
+    else:
+      rewards, successes, trajs, eval_timings = evaluate(config, policy, test_env, count=10, should_time=PROF)
     policy.set_models_to_train()
     if PROF: timer_s.stop("eval")
     for k,v in eval_timings.items():
@@ -208,7 +211,10 @@ def train_policy(config, E, policy, optimiser, out_dir, device, PROF=False):
     if ep % config.test_interval == 0:
       if PROF: timer_s.start("eval")
       policy.set_models_to_eval()
-      rewards, successes, trajs, eval_timings = evaluate(config, policy, test_env, count=10, should_time=PROF)
+      if config.device_is_multicore:
+        rewards, successes, trajs, eval_timings = evaluate_parallel(config, policy, count=10)
+      else:
+        rewards, successes, trajs, eval_timings = evaluate(config, policy, test_env, count=10, should_time=PROF)
       policy.set_models_to_train()
       if PROF: timer_s.stop("eval")
       for k,v in eval_timings.items():
