@@ -1,4 +1,4 @@
-export PROJECT_ROOT="$HOME/Workspace/mj_envs_vision"
+export PROJECT_ROOT="$HOME/mj_envs_vision"
 export PYTHONPATH="$PROJECT_ROOT/:$PYTHONPATH"
 export PYTHONPATH="$PROJECT_ROOT/dependencies/PlaNet/:$PYTHONPATH"
 export PYTHONPATH="$PROJECT_ROOT/dependencies/Adroit/:$PYTHONPATH"
