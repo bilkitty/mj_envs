@@ -22,7 +22,9 @@ plt.rcParams.update({"font.size": 22})
 class Metrics:
   def __init__(self, group_size=1):
     self._group_size = group_size
-    self._aggregate_fn = lambda x: list(np.array(x).reshape(self._group_size, -1).mean(axis=0))
+
+  def _aggregate_fn(self, x):
+    return list(np.array(x).reshape(self._group_size, -1).mean(axis=0))
 
   def items(self) -> dict:
     return {k: self._aggregate_fn(v) for k, v in self.__dict__.items() if not k.startswith('_')}
@@ -145,8 +147,11 @@ def save_as_gif(frames: List[np.ndarray], gif_path: str, is_obs: bool=False, hz:
     frame = to_image_frame(frame) if is_obs else frame.astype('uint8')
     pils.append(Image.fromarray(frame))
 
-  durations = 1/hz * 1000
-  pils[0].save(gif_path, append_images=pils, save_all=True, optimize=False, loop=1, duration=durations)
+  if len(pils) == 0:
+    print("there are no frames to save")
+  else:
+    durations = 1/hz * 1000
+    pils[0].save(gif_path, append_images=pils, save_all=True, optimize=False, loop=1, duration=durations)
 
 def grid_gif(gif_paths: List[str], t_sample: int = 1, is_square: bool=True, t_stop: int=None):
   assert t_sample > 0
