@@ -3,7 +3,7 @@ from gym import utils
 from mjrl.envs import mujoco_env
 from mujoco_py import MjViewer
 from mj_envs_vision.utils.quatmath import *
-from mj_envs_vision.hand_manipulation_suite.headless_observer import HeadlessObserver
+from mj_envs_vision.hand_manipulation_suite.headless_observer import HeadlessObserver, MAX_CONTACT
 import os
 
 ADD_BONUS_REWARDS = True
@@ -101,7 +101,12 @@ class HammerEnvV0(mujoco_env.MujocoEnv, utils.EzPickle):
         target_pos = self.data.site_xpos[self.target_obj_sid].ravel()
         nail_impact = np.clip(self.sim.data.sensordata[self.sim.model.sensor_name2id('S_nail')], -1.0, 1.0)
         # Ensure type is compatible with that of the default observation spec
-        return np.concatenate([qp[:-6], qv[-6:], palm_pos, obj_pos, obj_rot, target_pos, np.array([nail_impact])]).astype('float32')
+        state = [qp[:-6], qv[-6:], palm_pos, obj_pos, obj_rot, target_pos, np.array([nail_impact])]
+        if self.observer and self.observer.get_state():
+            state.append(np.array(self.observer.get_state()))
+        else:
+            state.append(np.array([0] * 11 * MAX_CONTACT))
+        return np.concatenate(state).astype('float32')
 
     def reset_model(self):
         self.sim.reset()

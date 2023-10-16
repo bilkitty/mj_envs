@@ -122,6 +122,8 @@ def make_env(config):
       return CustomPixelObservationWrapper(e, render_kwargs=dict(pixels=render_kwargs))
     elif config.state_type == "vector":
       return CustomPixelObservationWrapper(e, obs_key=STATE_KEY, render_kwargs=dict(pixels=render_kwargs))
+    elif config.state_type == "vector+":
+      return CustomPixelObservationWrapper(e, obs_key=STATE_KEY, render_kwargs=dict(pixels=render_kwargs), has_full_state=True)
     else:
       raise Exception(f"Unsupported state type '{config.state_type}'")
 

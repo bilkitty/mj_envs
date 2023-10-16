@@ -30,7 +30,7 @@ class GuiObservationWrapper(ObservationWrapper):
 
 
 class CustomPixelObservationWrapper(PixelObservationWrapper):
-  def __init__(self, env, obs_key=PIXELS_KEY, render_kwargs=None, action_repeat=1):
+  def __init__(self, env, obs_key=PIXELS_KEY, render_kwargs=None, action_repeat=1, has_full_state=False):
     env = StepAPICompatibility(env, output_truncation_bool=True) # convert any envs from old ot new api
     super().__init__(env, pixels_only=False, render_kwargs=render_kwargs) #TODO: too wasteful to keep both state/pels?
     self.env_spec = StateActionSpec(env.action_space, env.observation_space)
@@ -38,6 +38,7 @@ class CustomPixelObservationWrapper(PixelObservationWrapper):
     self.max_episode_length = 200 # TODO: dont hard code
     self.timer = 0
     self.obs_key = obs_key
+    self.has_full_state = has_full_state
 
     # if pixels, uses pil image format
     self.curr_obs = super().reset()[0]
@@ -73,4 +74,10 @@ class CustomPixelObservationWrapper(PixelObservationWrapper):
     return torch.FloatTensor(self.curr_obs[PIXELS_KEY].copy())
 
   def get_state(self) -> torch.FloatTensor:
-    return torch.FloatTensor(self.curr_obs[STATE_KEY].copy())
+    #TODO:  use cleaner approach. perhaps add a aug_state key that's created when obs is populated
+    if self.has_full_state:
+      return torch.FloatTensor(self.curr_obs[STATE_KEY].copy())
+    else:
+      x = self.curr_obs[STATE_KEY]
+      x = self.curr_obs[STATE_KEY][:-2]
+      return torch.FloatTensor(self.curr_obs[STATE_KEY][:-2].copy())
