@@ -6,14 +6,14 @@ import pickle as pkl
 import multiprocessing
 from multiprocessing import pool
 import warnings
-warnings.filterwarnings('ignore')
+warnings.simplefilter('ignore')
 
 from tqdm import tqdm
 from mj_envs_vision.utils.helpers import make_env
 from mj_envs_vision.utils.helpers import BasicTimer
 from mj_envs_vision.utils.helpers import reset, step
-from mj_envs_vision.utils.helpers import plot_rewards
-from mj_envs_vision.utils.helpers import visualise_trajectory
+from mj_envs_vision.utils.helpers import plot_rewards, plot_time
+from mj_envs_vision.utils.helpers import visualise_trajectory, save_as_gif
 from mj_envs_vision.utils.config import load_config
 from mj_envs_vision.algos.baselines import make_baseline_policy
 
@@ -28,9 +28,10 @@ CORE_BATCHES = 2
 @click.option('--trials', type=int, help='number of trials to visualize', default=5)
 @click.option('--checkpoint_count', type=int, help='number of checkpoints to test', default=1)
 @click.option('--parallel', is_flag=True, help='enables multi-core processing')
+@click.option('--enable_profile', is_flag=True, help='enables profiling')
 
 
-def main(config_path, out_path, policy_type, trials, variation_type, checkpoint_count, parallel):
+def main(config_path, out_path, policy_type, trials, variation_type, checkpoint_count, parallel, enable_profile):
   # Setup config
   config = load_config(config_path, policy_type)
   config.variation_type = variation_type
@@ -49,6 +50,7 @@ def main(config_path, out_path, policy_type, trials, variation_type, checkpoint_
 
   rewards = list()
   successes = list()
+  timings_ms = dict()
   T = make_env(config)
   for idx in range(checkpoint_count):
     pi.set_checkpoint_index(idx)
@@ -62,14 +64,31 @@ def main(config_path, out_path, policy_type, trials, variation_type, checkpoint_
     torch.manual_seed(config.seed)
     # cuda manual seed?
 
+    # convert models to torchscript
+#    for n, m in pi.models.items():
+#      pi.models[n] = torch.jit.script(m)
+
     if parallel:
       print(f"~~~~~ sharing strategy {torch.multiprocessing.get_sharing_strategy()}")
       print(f"Enabled multi-core processing ({multiprocessing.cpu_count() // CORE_BATCHES} cores) of {trials} trials.")
+      timer = BasicTimer('s')
+      timer.start('eval-parallel')
       rwds, succs, trajs, _ = evaluate_parallel(config, pi, count=trials)
+      timer.stop('eval-parallel')
+      timings = timer.dump()
       trajs = [[(xx, None, None) for xx in x] for x in trajs]
     else:
-      rwds, succs, trajs, _ = evaluate(config, pi, T, count=trials)
+      rwds, succs, trajs, timings = evaluate(config, pi, T, count=trials, should_time=enable_profile)
 
+    for k, v in timings.items():
+      if timings_ms.get(k):
+        timings_ms[k].append(np.mean(v))
+      else:
+        timings_ms[k] = [np.mean(v)]
+
+    # todo: TMP
+    save_as_gif(T.env.unwrapped.observer.get_annotated_images(),
+                os.path.join(out_path,f'annotations_{str(model_id)}.gif'))
     visualise_trajectory(str(model_id), trajs[-1], out_path, prefix=f"trajectory_")  # select worst
     visualise_trajectory(str(model_id), [x[0] for x in trajs], out_path, prefix=f"init-trajectory_")
 
@@ -82,6 +101,8 @@ def main(config_path, out_path, policy_type, trials, variation_type, checkpoint_
   exp_name = f"var-{variation_type or 'fixed'}"
   plot_rewards(rewards, "total rewards").savefig(os.path.join(out_path, f"eval_rewards_{exp_name}.png"), bbox_inches='tight')
   plot_rewards(successes, "success rate").savefig(os.path.join(out_path, f"eval_success_{exp_name}.png"), bbox_inches='tight')
+  plot_time(timings_ms, config.max_episodes, "runtime (ms)").savefig(os.path.join(out_path, "time_eval.png"),
+                                                                     bbox_inches='tight')
 
   # save performance metrics
   pkl.dump(rewards, open(os.path.join(out_path, "eval_rewards.pkl"), "wb"))
@@ -97,7 +118,7 @@ def single_eval(config, policy, worker_id):
   frame = test_env.get_pixels().squeeze(dim=0)
   traj = torch.zeros((config.max_episode_length // config.action_repeat, *frame.shape))
   obs, _ = reset(test_env)
-  policy.reset(**dict(count=1))
+  policy.reset(**dict(count=1))  # TODO: update
 
   r = -float('inf')
   action = policy.act(obs.squeeze(dim=0)).squeeze(dim=0).cpu()
@@ -118,7 +139,6 @@ def single_eval(config, policy, worker_id):
 
 def evaluate_parallel(config, policy, count=10):
   # TODO: time batches
-  # TODO: fix rendered output
   with torch.no_grad():
     total_rwds, successes, trajectories = [], [], []
     # use subset of available cores to allow enough memory for simulation loops
@@ -155,7 +175,7 @@ def _eval(config, policy, T, count=10):
       success = False
       traj = []
       obs, _ = reset(T)
-      policy.reset(**dict(count=1))
+      policy.reset(**dict(count=1))  # TODO: update
       for t in tqdm(range(config.max_episode_length // config.action_repeat)):
         frame = T.get_pixels().squeeze(dim=0)
         action = policy.act(obs.squeeze(dim=0)).squeeze(dim=0).cpu()
@@ -186,7 +206,7 @@ def _eval_timed(config, policy, T, count=10):
       traj = []
 
       obs, _ = reset(T)
-      policy.reset(**dict(count=1))
+      policy.reset(**dict(count=1))  # TODO: update
       for t in tqdm(range(config.max_episode_length // config.action_repeat)):
         frame = T.get_pixels().squeeze(dim=0)
         timer.start("act")
