@@ -109,37 +109,47 @@ class HeadlessObserver(utils.EzPickle):
 
                 # annotate in image with gradient of red to blue to distinguish contacts
                 cid = 0
-                bn = self.sim.model.body_names
-                #xyz = np.array([[*x[1:4], 1]])
-                # TODO: nail is spot on, but other objs are offset to bottom right...
-                xyz = np.array([[*self.sim.data.body_xpos[-2], 1]]) # object (nail)
-                #xyz = np.array([[*self.sim.data.body_xpos[5], 1]]) # object (palm)
-                xyz_ref = np.array([[*self.sim.data.body_xpos[1], 1]]) # table (world)
-                # construct intrinsics (FOV = 2 * arctan(h / 2 * f)
+                body_names = self.sim.model.body_names
+                xyz = np.array([[*x[1:4], 1]]);xyz[0,1] = 0
+                # TODO: fix depth to y=0 ----- fix math below to avoid this
+                #xyz = np.array([[*self.sim.data.body_xpos[self.sim.model.body_name2id('palm')], 1]]);xyz[0,1] = 0 # object (palm)
+                # these are pos in world; object pos (0, -0.2, 0.035)
+                xyz_ref1 = np.array([[*self.sim.data.body_xpos[self.sim.model.body_name2id('nail')], 1]]);xyz_ref1[0,1] = 0 # object (nail)
+                xyz_ref2 = np.array([[*self.sim.data.geom_xpos[self.sim.model.geom_name2id('neck')], 1]]);xyz_ref2[0,1] = 0 # table (world)
+                xyz_ref3 = np.array([[*self.sim.data.body_xpos[self.sim.model.body_name2id('Object')], 1]]) # table (world)
+                # construct intrinsics using: FOV = 2 * arctan(h / 2 * f
                 f = 0.5 * h / np.tanh(self.sim.model.cam_fovy[0] / 2 / 180 * np.pi)
-                t = self.sim.model.cam_pos[cid].reshape(-1,1)
 
                 K = np.eye(3,3)
                 K[:2, :3] = np.array([[f, 0, 0.5 * h], [0, f, 0.5 * h]])
-                # construct extrinsics with view axis correction
+                # construct extrinsics with view axis correction (unsure, x = x, +y = +z and +z = -y)
                 # https://github.com/ARISE-Initiative/robosuite/blob/b9d8d3de5e3dfd1724f4a0e6555246c460407daa/robosuite/utils/camera_utils.py#L60C9-L60C9
                 Rc = np.eye(4,4); Rc[1,1] = -1; Rc[2,2] = -1
+                #Rc = np.eye(3,3); Rc[1,2] = -1; Rc[2,1] = 1; Rc[1,1] = 0; Rc[2,2] = 0
+                #a = Rc @ xyz_ref1.T
+                #b = Rc @ xyz_ref2.T
+
                 R = sci.spatial.transform.Rotation.from_quat(self.sim.model.cam_quat[cid]).as_matrix() # in body frame
+                t = self.sim.model.cam_pos[cid].reshape(-1,1)
                 # construct projection mat P = K x I x Rt with axis-correction Q
-                P = np.concatenate([R, t], axis=1)
-                P = K @ P @ Rc
-                uvd = np.matmul(P, xyz.T).T.squeeze()
-                uvd_ref = np.matmul(P, xyz_ref.T).T.squeeze()
-                #uvd = np.matmul(xyz, K).squeeze() + self.sim.model.cam_pos[0]
+                P = K @ np.concatenate([R, t], axis=1) @ Rc # 3x4
+                # testing alternative axis correction, if we go with this, remove -1 scalar on v
+                #P = K @ Rc @ np.concatenate([R, t], axis=1) # 3x4
+                uvd = (P @ xyz.T).T.squeeze()
+                uvd_ref1 = (P @ xyz_ref1.T).T.squeeze()
+                uvd_ref2 = (P @ xyz_ref2.T).T.squeeze()
+                uvd_ref3 = (P @ xyz_ref3.T).T.squeeze()
                 # image origin is lower left corner
-                u, v = int(uvd[0] / uvd[2]), -1 * int(uvd[1] / uvd[2])
-                u_ref, v_ref = int(uvd_ref[0] / uvd_ref[2]), -1 * int(uvd_ref[1] / uvd_ref[2])
                 #u_ref, v_ref = int(uvd_ref[0] / uvd_ref[2]), int(uvd_ref[1] / uvd_ref[2])
+                u, v = int(uvd[0] / uvd[2]), -1 * int(uvd[1] / uvd[2])
+                u_ref1, v_ref1 = int(uvd_ref1[0] / uvd_ref1[2]), -1 * int(uvd_ref1[1] / uvd_ref1[2])
+                u_ref2, v_ref2 = int(uvd_ref2[0] / uvd_ref2[2]), -1 * int(uvd_ref2[1] / uvd_ref2[2])
+                u_ref3, v_ref3 = int(uvd_ref3[0] / uvd_ref3[2]), -1 * int(uvd_ref3[1] / uvd_ref3[2])
                 text += f"{bn1}->{bn2}: ({u}, {v})\n"
-                #u, v = max(0, min(w, u)), max(0, min(h, v))
                 ImageDraw.Draw(pil_annotated).rectangle((u - 2, v - 2, u + 2, v + 2), fill=(S * i, 0, 255 - S * i))
-                ImageDraw.Draw(pil_annotated).rectangle((u_ref - 2, v_ref - 2, u_ref + 2, v_ref + 2), fill=(S * i, 0, 255 - S * i))
-                #text += f"{x[-2]}->{x[-1]}: ({x[1]: .2f}, {x[2]: .2f}, {x[3]: .2f})\n"
+                ImageDraw.Draw(pil_annotated).rectangle((u_ref1 - 2, v_ref1 - 2, u_ref1 + 2, v_ref1 + 2), fill=(S * i * 2, 0, 255 - S * i * 2))
+                ImageDraw.Draw(pil_annotated).rectangle((u_ref2 - 2, v_ref2 - 2, u_ref2 + 2, v_ref2 + 2), fill=(S * i * 3, 0, 255 - S * i * 3))
+                ImageDraw.Draw(pil_annotated).rectangle((u_ref3 - 2, v_ref3 - 2, u_ref3 + 2, v_ref3 + 2), fill=(S * i * 3, 0, 255 - S * i * 3))
                 i += 1
 
         # log annotated images for debugging
