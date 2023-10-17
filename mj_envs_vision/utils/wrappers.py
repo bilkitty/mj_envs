@@ -78,6 +78,4 @@ class CustomPixelObservationWrapper(PixelObservationWrapper):
     if self.has_full_state:
       return torch.FloatTensor(self.curr_obs[STATE_KEY].copy())
     else:
-      x = self.curr_obs[STATE_KEY]
-      x = self.curr_obs[STATE_KEY][:-2]
       return torch.FloatTensor(self.curr_obs[STATE_KEY][:-2].copy())

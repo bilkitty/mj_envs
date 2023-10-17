@@ -133,12 +133,13 @@ class PPOBaseline:
     self.target_kl = None
     self.entropy_coeff = config.entropy
     self.models_path = config.models_path
+    self.state_type = config.state_type
     self.model_idx = 0
     self.metrics = PPOMetrics(group_size=1)
     self.experience = None
     self.timer_ms = BasicTimer('ms')
     self.experience = memory.ExperienceReplay(config.experience_size,
-                                         config.state_type == "vector",
+                                         "vector" in config.state_type,
                                          observation_size,
                                          action_size,
                                          config.bit_depth,
@@ -203,10 +204,15 @@ class PPOBaseline:
     self.timer_ms.stop("ppo-save")
 
   def record_experience(self, obs: torch.Tensor, action: torch.Tensor, rwd: float, done: bool):
-    self.experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
+    if "vector" in self.state_type:
+      self.experience.append(obs.cpu(), action, rwd, done)
+    else:
+      self.experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
 
   def update(self) -> None:
     self.timer_ms.start("ppo-learn")
+    # internally collects experience using custom env input (with obs corresponding to config.state_type)
+    # see ln165 in stable-baselines3/stable_baselines3/common/on_policy_algorithm.py
     self.ppo.learn(self.n_steps, log_interval=self.log_interval, progress_bar=True)
     self.timer_ms.stop("ppo-learn")
     if self.ppo.logger.name_to_value and len(self.ppo.logger.name_to_value) > 0:
@@ -255,6 +261,7 @@ class Planet:
     self.device = device
     self.models_path = config.models_path
     self.model_idx = 0
+    self.state_type = config.state_type
     self.metrics = PlanetMetrics(config.train_epochs)
     self.timer_ms = BasicTimer('ms')
 
@@ -262,11 +269,11 @@ class Planet:
     self.reset()
     self.timer_ms.start("planet-init")
     self.models = dict(transition=models.TransitionModel(config.belief_size, config.state_size, action_size, config.hidden_size, config.embedding_size, config.activation_fn),
-        observation=models.ObservationModel(config.state_type == "vector", observation_size, config.belief_size, config.state_size, config.embedding_size, config.activation_fn),
-        encoder=models.Encoder(config.state_type == "vector", observation_size, config.embedding_size, config.activation_fn),
+        observation=models.ObservationModel("vector" in config.state_type, observation_size, config.belief_size, config.state_size, config.embedding_size, config.activation_fn),
+        encoder=models.Encoder("vector" in config.state_type, observation_size, config.embedding_size, config.activation_fn),
         reward=models.RewardModel(config.belief_size, config.state_size, config.hidden_size, config.activation_fn))
     self.experience = memory.ExperienceReplay(config.experience_size,
-                                         config.state_type == "vector",
+                                         "vector" in config.state_type,
                                          observation_size,
                                          action_size,
                                          config.bit_depth,
@@ -331,7 +338,15 @@ class Planet:
     for m in self.models.values(): m.train()
 
   def record_experience(self, obs: torch.Tensor, action: torch.Tensor, rwd: float, done: bool):
-    self.experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
+    if self.state_type == "vector+":
+      # TODO: finish implementing obs dictionary
+      image = _images_to_observation(obs['frame'].cpu().numpy(), bit_depth=5)
+      self.experience.append(image, action, rwd, done)
+      #self.experience.append([obs['vector'],image], action, rwd, done)
+    if self.state_type == "observation":
+      self.experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
+    else:
+      raise Exception(f'unsupported state type: {self.state_type}')
 
   def update(self) -> None : # TODO: update to compute_loss
     # sample data iid
@@ -446,6 +461,7 @@ class Dreamer:
     self.device = device
     self.models_path = cfg.models_path
     self.model_idx = 0
+    self.state_type = cfg.state_type
     # TODO: track prediction errors + provide reconstructions for vis
     self.metrics = DreamerMetrics(cfg.train_epochs)
     self.timer_ms = BasicTimer('ms')
@@ -462,7 +478,7 @@ class Dreamer:
                             actor_grad=cfg.actor_grad,
                             actor_dist=cfg.actor_dist)
     self.experience = memory.ExperienceReplay(cfg.experience_size,
-                                         cfg.state_type == "vector",
+                                         "vector" in cfg.state_type,
                                          observation_size,
                                          action_size,
                                          cfg.bit_depth,
@@ -512,8 +528,16 @@ class Dreamer:
 
   # TODO: custom memory
   #       see preprocessor.py for expected inputs
-  def record_experience(self, image: torch.Tensor, action: torch.Tensor, rwd: float, done: bool):
-    self.experience.append(_images_to_observation(image.cpu().numpy(), bit_depth=5), action, rwd, done)
+  def record_experience(self, obs: torch.Tensor, action: torch.Tensor, rwd: float, done: bool):
+    if self.state_type == "vector+":
+      # TODO: finish implementing obs dictionary
+      image = _images_to_observation(obs['frame'].cpu().numpy(), bit_depth=5)
+      self.experience.append(image, action, rwd, done)
+      #self.experience.append([obs['vector'],image], action, rwd, done)
+    if self.state_type == "observation":
+      self.experience.append(_images_to_observation(obs.cpu().numpy(), bit_depth=5), action, rwd, done)
+    else:
+      raise Exception(f'unsupported state type: {self.state_type}')
 
   def update(self) -> None:
     #
