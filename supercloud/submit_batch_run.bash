@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -c 4
+#SBATCH -c 20
 #SBATCH --gres=gpu:volta:1 
 
 # Optional
@@ -14,7 +14,6 @@ export MUJOCO_ENV_HOME=/state/partition1/user/$USER
 export MUJOCO_ENV=/state/partition1/user/$USER/mujoco_env
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/nvidia:$HOME/.mujoco/mujoco210/bin
 export CFLAGS="-I/home/gridsan/bgithinji/glew-install/include"
-# override spec in setup.bash
 #export CUDA_VISIBLE_DEVICES=0
 
 # Check if the environment exists on the local disk. If not copy it over from the home directory.
@@ -42,7 +41,7 @@ pip list | grep mjrl
 
 # Project setup
 pip install --no-cache-dir -r $HOME/mj_envs_vision/requirements.txt
-source $HOME/mj_envs_vision/setup.bash
+source $HOME/mj_envs_vision/setup_supercloud.bash
 unset LD_PRELOAD
 
 echo "~~ CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES ~~"

@@ -10,6 +10,7 @@ export CUDA_VISIBLE_DEVICES=0
 # Check if the environment exists on the local disk. If not copy it over from the home directory.
 if [ ! -d "$MUJOCO_ENV" ]; then
     echo "~~ extracting $HOME/mujoco_env.zip to $MUJOCO_ENV_HOME ~~"
+    cd $HOME
     mkdir -p $MUJOCO_ENV_HOME
     unzip "$HOME/mujoco_env.zip" -d $MUJOCO_ENV_HOME
 fi
@@ -30,8 +31,7 @@ echo "~~ check packages ~~"
 pip list | grep mjrl
 
 # Project setup
-pip install --no-cache-dir -r $HOME/mj_envs_vision/requirements.txt
-source $HOME/mj_envs_vision/setup.bash
+source $HOME/mj_envs_vision/setup_supercloud.bash
 unset LD_PRELOAD
 
 echo "~~ CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES ~~"

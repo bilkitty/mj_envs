@@ -1,0 +1,12 @@
+{
+   "results_path" : "cont",
+   "policy_types" : ["ppo"],
+   "config_paths" : [
+     "$PROJECT_ROOT/config/offline_ppo.json"
+   ],
+   "hyper_parameters" : {
+     "max_episodes" : ["int", [100000]],
+     "state_type" : ["str", ["vector", "vector+"]]
+   }
+}
+
